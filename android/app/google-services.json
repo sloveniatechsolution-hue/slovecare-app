@@ -12,7 +12,20 @@
           "package_name": "com.slovecare"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "855960380489-9ajo9nf9b8njf93hvhv9n1b5oe2ehjuv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.slovecare",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "855960380489-siduqd86i631a3i35o31932hsluf8l0e.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyB5OYLGyySZuI360R_nFcuU08TlbhkbePA"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "855960380489-siduqd86i631a3i35o31932hsluf8l0e.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

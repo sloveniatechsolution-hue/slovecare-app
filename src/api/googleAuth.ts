@@ -21,7 +21,7 @@
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 /** Google Cloud → OAuth client ID (type: Web application). Isi se ID token banta hai. */
-export const GOOGLE_WEB_CLIENT_ID = '111598190913-b7ojjppoth0a2m3dco2bgtfptno1cepk.apps.googleusercontent.com';
+export const GOOGLE_WEB_CLIENT_ID = '855960380489-siduqd86i631a3i35o31932hsluf8l0e.apps.googleusercontent.com';
 
 const isConfigured = (): boolean =>
   Boolean(GOOGLE_WEB_CLIENT_ID) && !GOOGLE_WEB_CLIENT_ID.startsWith('PASTE_YOUR_');
