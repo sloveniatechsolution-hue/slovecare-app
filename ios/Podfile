@@ -30,5 +30,7 @@ target 'slovecare' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+    # MapLibre (homepage ka "Care nearby" map) — iOS ke liye zaroori.
+    $MLRN.post_install(installer)
   end
 end

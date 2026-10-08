@@ -1,0 +1,81 @@
+diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ExoPlayerView.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ExoPlayerView.kt
+index 75e2307..bff61f2 100644
+--- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ExoPlayerView.kt
++++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ExoPlayerView.kt
+@@ -4,6 +4,7 @@ import android.content.Context
+ import android.graphics.Color
+ import android.graphics.drawable.GradientDrawable
+ import android.util.AttributeSet
++import android.view.LayoutInflater
+ import android.view.View
+ import android.view.View.MeasureSpec
+ import android.widget.FrameLayout
+@@ -17,6 +18,7 @@ import androidx.media3.ui.DefaultTimeBar
+ import androidx.media3.ui.PlayerView
+ import com.brentvatne.common.api.ResizeMode
+ import com.brentvatne.common.api.SubtitleStyle
++import com.brentvatne.react.R
+ 
+ @UnstableApi
+ class ExoPlayerView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0) :
+@@ -37,21 +39,25 @@ class ExoPlayerView @JvmOverloads constructor(context: Context, attrs: Attribute
+         visibility = View.GONE
+     }
+ 
+-    private val playerView = PlayerView(context).apply {
+-        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+-        setShutterBackgroundColor(Color.TRANSPARENT)
+-        useController = true
+-        controllerAutoShow = true
+-        controllerHideOnTouch = true
+-        controllerShowTimeoutMs = 5000
+-        // Don't show subtitle button by default - will be enabled when tracks are available
+-        setShowSubtitleButton(false)
+-        // Enable proper surface view handling to prevent rendering issues
+-        setUseArtwork(false)
+-        setDefaultArtwork(null)
+-        // Ensure proper video scaling - start with FIT mode
+-        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+-    }
++    // SloveCare patch: TextureView wala layout inflate karte hain (default SurfaceView
++    // window ke peeche render hota hai aur overlay/text video ko chhupa dete the).
++    private val playerView = (LayoutInflater.from(context)
++        .inflate(R.layout.rnv_player_view_texture, this, false) as PlayerView)
++        .apply {
++            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
++            setShutterBackgroundColor(Color.TRANSPARENT)
++            useController = true
++            controllerAutoShow = true
++            controllerHideOnTouch = true
++            controllerShowTimeoutMs = 5000
++            // Don't show subtitle button by default - will be enabled when tracks are available
++            setShowSubtitleButton(false)
++            // Enable proper surface view handling to prevent rendering issues
++            setUseArtwork(false)
++            setDefaultArtwork(null)
++            // Ensure proper video scaling - start with FIT mode
++            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
++        }
+ 
+     init {
+         // Add PlayerView with explicit layout parameters
+diff --git a/node_modules/react-native-video/android/src/main/res/layout/rnv_player_view_texture.xml b/node_modules/react-native-video/android/src/main/res/layout/rnv_player_view_texture.xml
+new file mode 100644
+index 0000000..90b6840
+--- /dev/null
++++ b/node_modules/react-native-video/android/src/main/res/layout/rnv_player_view_texture.xml
+@@ -0,0 +1,14 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++  SloveCare patch (patch-package) — see patches/react-native-video+*.patch
++
++  PlayerView ka default surface_type "surface_view" hai, jo Android par window ke
++  PEECHE render hota hai — isliye uske upar text/overlay wale views video ko chhupa
++  dete the (background hero me video dikhti hi nahi thi). Yahan TextureView force kar
++  rahe hain taaki video view-hierarchy ke andar draw ho aur scrim/text uske upar aa sake.
++-->
++<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent"
++    app:surface_type="texture_view" />

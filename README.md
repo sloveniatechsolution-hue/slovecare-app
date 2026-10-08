@@ -95,3 +95,35 @@ To learn more about React Native, take a look at the following resources:
 - [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
 - [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
 - [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+
+---
+
+## SloveCare — project notes
+
+### Homepage ka "Care nearby" map — MapLibre + OpenStreetMap (key-less)
+Map `@maplibre/maplibre-react-native` + OSM tiles (`tile.openstreetmap.org`) se bana hai —
+**koi API key ya billing nahi** chahiye (web app wala hi map stack).
+Native module hai, isliye app rebuild karna padta hai:
+```
+npm install
+npx react-native run-android
+```
+- Rebuild se pehle app list-fallback dikhata hai (crash nahi hota).
+- iOS: `cd ios && pod install` chalayein (Podfile me `$MLRN.post_install` already added).
+- Style inline hai (`OSM_STYLE` in `src/components/NearbyMap.tsx`); production scale par
+  OSM tile usage policy ke liye apna tile provider (Stadia/MapTiler) laga lena.
+
+### Slots & availability (backend)
+`GET /api/v1/vendors/:id/availability?days=14&offset=330`
+- Vendor ki **workingDays + workingHours** se dates/slots generate hote hain (hardcoded 7 din nahi).
+- Already-booked slots hata diye jaate hain; `offset` (client UTC offset) se **aaj ke past slots**
+  bhi filter ho jaate hain.
+- Response: `{ vendorId, timezone, days: [{ date, weekday, label, isToday, working, slots, bookedCount }] }`
+
+### Double-booking guard
+`POST /api/v1/bookings` par:
+- explicit `timeSlot` aane par `slotKey = vendorId|date|timeSlot` banta hai (format normalize karke);
+- Booking collection par **partial unique index** — do parallel requests me ek hi slot le paayegi,
+  doosri `409` return karegi;
+- booking **cancel/reject** hote hi `slotKey` hata diya jaata hai, slot dobara free ho jaata hai;
+- app 409 par availability refresh karke user ko naye slots dikhata hai.

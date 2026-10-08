@@ -2,6 +2,11 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Location: bina inke `PermissionsAndroid.request` dialog dikhayebina
+         deny kar deta hai (map/list me "nearest" tab tak kaam nahi karta). -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <application
       android:name=".MainApplication"
       android:label="@string/app_name"
@@ -11,6 +16,7 @@
       android:theme="@style/AppTheme"
       android:usesCleartextTraffic="${usesCleartextTraffic}"
       android:supportsRtl="true">
+
       <activity
         android:name=".MainActivity"
         android:label="@string/app_name"
