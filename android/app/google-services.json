@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "855960380489-meb4ph66gf067980hc3u73n7l37nd7d4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.slovecare",
+            "certificate_hash": "4b4178638e68dd9579a6d8519e9544a6b3ddc5a9"
+          }
+        },
+        {
           "client_id": "855960380489-siduqd86i631a3i35o31932hsluf8l0e.apps.googleusercontent.com",
           "client_type": 3
         }
