@@ -63,7 +63,10 @@ export default function HealthProfileScreen({ navigation, route }: Props): React
     [],
   );
   const cityOptions = useMemo(() => {
-    const selected = INDIA_STATES.find(s => s.name === stateName);
+    const trimmedState = stateName.trim().toLowerCase();
+    const selected = INDIA_STATES.find(
+      s => s.name.toLowerCase() === trimmedState || s.isoCode.toLowerCase() === trimmedState,
+    );
     if (!selected) {
       return [];
     }
@@ -72,8 +75,16 @@ export default function HealthProfileScreen({ navigation, route }: Props): React
 
   const onStateChange = (next: string) => {
     setStateName(next);
-    /* State badalte hi purani city nahi rehni chahiye. */
-    setCity('');
+    setError(null);
+    /* State badalte hi purani city nahi rehni chahiye agar state alag hai. */
+    if (next !== stateName) {
+      setCity('');
+    }
+  };
+
+  const onCityChange = (next: string) => {
+    setCity(next);
+    setError(null);
   };
 
   /** Photo Cloudinary par upload ho chuki hai — user me save kar do. */
@@ -224,7 +235,7 @@ export default function HealthProfileScreen({ navigation, route }: Props): React
               emptyText={stateName ? 'No city found for this state' : 'Choose your state to see cities'}
               value={city}
               options={cityOptions}
-              onChange={setCity}
+              onChange={onCityChange}
               disabled={!stateName}
             />
             <TextField

@@ -289,18 +289,20 @@ export function SelectField({
   // Android navigation bar / gesture bar ke peeche sheet na chhup jaye
   const insets = useSafeAreaInsets();
 
-  const selected = options.find(o => o.value === value);
-  const filtered = query.trim()
-    ? options.filter(o => o.label.toLowerCase().includes(query.trim().toLowerCase()))
+  const selected = options.find(o => o.value === value || o.label === value);
+  const trimmedQuery = query.trim().toLowerCase();
+  const filtered = trimmedQuery
+    ? options.filter(o => o.label.toLowerCase().includes(trimmedQuery) || o.value.toLowerCase().includes(trimmedQuery))
     : options;
 
   const pick = (v: string) => {
+    onChange(v);
     setOpen(false);
     setQuery('');
-    if (v !== value) {
-      onChange(v);
-    }
   };
+
+  const displayText = selected?.label || (value && value.trim() ? value : placeholder);
+  const isSelected = Boolean(selected || (value && value.trim()));
 
   return (
     <View style={[{ marginBottom: spacing.lg }, containerStyle]}>
@@ -319,23 +321,26 @@ export function SelectField({
         ]}
       >
         {icon ? <Icon name={icon} size={18} color={colors.textMuted} /> : null}
-        <Text style={[styles.input, { paddingVertical: 14 }, !selected && { color: colors.textMuted }]} numberOfLines={1}>
-          {selected?.label ?? placeholder}
+        <Text
+          style={[styles.input, { paddingVertical: 14 }, !isSelected && { color: colors.textMuted }]}
+          numberOfLines={1}
+        >
+          {displayText}
         </Text>
         <Icon name="chevron-down" size={17} color={colors.textMuted} />
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.sheetBackdrop} onPress={() => setOpen(false)}>
-          {/* stop propagation — sheet par touch backdrop par na jaye */}
-          <Pressable
-            style={[styles.sheet, { paddingBottom: insets.bottom + spacing.xxl }]}
-            onPress={() => {}}
+        <View style={styles.sheetBackdrop}>
+          {/* Backdrop press dismisses sheet without capturing sheet children touches */}
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
+          <View
+            style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + spacing.xl }]}
           >
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>{label ?? placeholder}</Text>
 
-            {options.length > 6 ? (
+            {options.length > 5 ? (
               <View style={[styles.field, { marginBottom: spacing.md }]}>
                 <Icon name="search" size={17} color={colors.textMuted} />
                 <TextInput
@@ -354,20 +359,51 @@ export function SelectField({
               </View>
             ) : null}
 
+            {query.trim() && !options.some(o => o.label.toLowerCase() === query.trim().toLowerCase()) ? (
+              <Pressable
+                onPress={() => pick(query.trim())}
+                style={({ pressed }) => [
+                  styles.sheetRow,
+                  { backgroundColor: colors.cardMuted, borderRadius: radius.md, marginBottom: spacing.xs },
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Text style={[typography.smallMedium, { color: colors.blue }]} numberOfLines={1}>
+                  Use &quot;{query.trim()}&quot;
+                </Text>
+                <Icon name="check" size={16} color={colors.blue} />
+              </Pressable>
+            ) : null}
+
             <FlatList
               data={filtered}
-              keyExtractor={item => item.value}
-              keyboardShouldPersistTaps="handled"
+              keyExtractor={(item, index) => `${item.value}_${index}`}
+              keyboardShouldPersistTaps="always"
               style={{ maxHeight: 320 }}
-              ListEmptyComponent={<Text style={[typography.small, { textAlign: 'center', paddingVertical: spacing.lg }]}>{emptyText}</Text>}
+              ListEmptyComponent={
+                <Text
+                  style={[
+                    typography.small,
+                    { textAlign: 'center', paddingVertical: spacing.lg, color: colors.textMuted },
+                  ]}
+                >
+                  {emptyText}
+                </Text>
+              }
               renderItem={({ item }) => {
-                const active = item.value === value;
+                const active = item.value === value || item.label === value;
                 return (
                   <Pressable
                     onPress={() => pick(item.value)}
-                    style={({ pressed }) => [styles.sheetRow, pressed && { backgroundColor: colors.cardMuted }]}
+                    style={({ pressed }) => [
+                      styles.sheetRow,
+                      pressed && { backgroundColor: colors.cardMuted },
+                    ]}
                   >
-                    <Text style={[typography.small, active && { color: colors.blue, fontWeight: '700' }]} numberOfLines={1}>
+                    <Text
+                      style={[typography.small, active && { color: colors.blue, fontWeight: '700' }]}
+                      numberOfLines={1}
+                    >
                       {item.label}
                     </Text>
                     {active ? <Icon name="check" size={16} color={colors.blue} /> : null}
@@ -375,8 +411,8 @@ export function SelectField({
                 );
               }}
             />
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
     </View>
   );
