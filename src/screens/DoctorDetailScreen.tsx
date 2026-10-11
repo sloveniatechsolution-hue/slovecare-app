@@ -448,7 +448,7 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
                           ) : null}
                         </View>
                         <AppButton
-                          label="Book Test"
+                          label="Book Now"
                           size="sm"
                           onPress={() => navigation.navigate('Booking', { mode: 'lab', test })}
                         />
