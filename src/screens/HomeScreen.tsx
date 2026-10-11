@@ -25,7 +25,10 @@ import {
 import api, { apiOrigin, Doctor, HealthcareService, HospitalBed } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList, StaffType } from '../navigation/types';
+
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -70,18 +73,27 @@ type QuickRoute = 'Doctors' | 'Labs' | 'PrescriptionReader' | 'Appointments';
 const TILE_BADGES = StyleSheet.create({
   blue: { backgroundColor: colors.blue, shadowColor: colors.blue },
   teal: { backgroundColor: colors.primary, shadowColor: colors.primary },
-  violet: { backgroundColor: '#7C3AED', shadowColor: '#7C3AED' },
+  violet: { backgroundColor: colors.violet, shadowColor: colors.violet },
   green: { backgroundColor: colors.accent, shadowColor: colors.accent },
 });
 
 const TILE_CHEVRONS = StyleSheet.create({
-  blue: { backgroundColor: '#EAF1FE' },
+  blue: { backgroundColor: colors.infoLight },
   teal: { backgroundColor: colors.primaryLight },
-  violet: { backgroundColor: '#F1ECFE' },
+  violet: { backgroundColor: colors.violetSoft },
   green: { backgroundColor: colors.accentLight },
 });
 
 type QuickAccent = keyof typeof TILE_BADGES;
+
+/** Chevron ka foreground — palette key, render par resolve hota hai (dark mode aware). */
+type AccentToken = 'blue' | 'primaryDark' | 'violet' | 'accent';
+const ACCENT_TOKEN: Record<QuickAccent, AccentToken> = {
+  blue: 'blue',
+  teal: 'primaryDark',
+  violet: 'violet',
+  green: 'accent',
+};
 
 const QUICK_ACTIONS: {
   label: string;
@@ -90,17 +102,16 @@ const QUICK_ACTIONS: {
   route: QuickRoute;
   type?: StaffType;
   accent?: QuickAccent;
-  accentFg?: string;
   featured?: boolean;
 }[] = [
   /* Pehla tile = user ki khud ki bookings (doctor/caretaker/lab — sab ek jagah). */
-  { label: 'My Appointments', sub: 'Your booked visits', icon: 'calendar', route: 'Appointments', accent: 'blue', accentFg: colors.blue },
-  { label: 'Find Doctors', sub: 'Near you', icon: 'search', route: 'Doctors', type: 'doctor', accent: 'teal', accentFg: colors.primaryDark },
-  { label: 'Lab Tests', sub: 'Home collection', icon: 'flask', route: 'Labs', accent: 'violet', accentFg: '#7C3AED' },
+  { label: 'My Appointments', sub: 'Your booked visits', icon: 'calendar', route: 'Appointments', accent: 'blue' },
+  { label: 'Find Doctors', sub: 'Near you', icon: 'search', route: 'Doctors', type: 'doctor', accent: 'teal' },
+  { label: 'Lab Tests', sub: 'Home collection', icon: 'flask', route: 'Labs', accent: 'violet' },
   /* Medicines quick action hata diya — Care Takers ab yahan */
-  { label: 'Care Takers', sub: 'Elder & patient care', icon: 'hand-heart', route: 'Doctors', type: 'caretaker', accent: 'green', accentFg: colors.accent },
+  { label: 'Care Takers', sub: 'Elder & patient care', icon: 'hand-heart', route: 'Doctors', type: 'caretaker', accent: 'green' },
   /* Featured tile — poori width ka gradient banner (chhote grid me akela card nahi) */
-  { label: 'Prescription Reader', sub: 'Scan & understand RX with AI', icon: 'file-text', route: 'PrescriptionReader', accent: 'blue', accentFg: colors.blue, featured: true },
+  { label: 'Prescription Reader', sub: 'Scan & understand RX with AI', icon: 'file-text', route: 'PrescriptionReader', accent: 'blue', featured: true },
 ];
 
 const STEPS = [
@@ -111,6 +122,7 @@ const STEPS = [
 ];
 
 export default function HomeScreen(): React.JSX.Element {
+  useThemePreference();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { user, isLoggedIn } = useAuth();
@@ -235,7 +247,7 @@ export default function HomeScreen(): React.JSX.Element {
                     <Icon name={action.icon} size={17} color={colors.textInverse} />
                   </View>
                   <View style={[styles.quickChevron, TILE_CHEVRONS[action.accent ?? 'blue']]}>
-                    <Icon name="chevron-right" size={11} color={action.accentFg ?? colors.blue} />
+                    <Icon name="chevron-right" size={11} color={colors[ACCENT_TOKEN[action.accent ?? 'blue']]} />
                   </View>
                 </View>
                 <Text style={styles.quickLabel} numberOfLines={1}>

@@ -37,11 +37,12 @@ import api, {
 } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from '../navigation/types';
+
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Booking'>;
+import { useThemePreference } from '../theme/ThemeContext';
 
-const FALLBACK_SLOTS = ['09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '02:00 PM', '04:00 PM', '06:00 PM', '07:30 PM'];
+type Props = NativeStackScreenProps<RootStackParamList, 'Booking'>;
 
 /** '09:00 AM' → minutes since midnight — aaj ke past slots filter karne ke liye. */
 function slotMinutes(value: string): number | null {
@@ -70,23 +71,8 @@ const CONSULTATION_TYPES: { key: string; label: string; sub: string; icon: IconN
   { key: 'Clinic Visit', label: 'Clinic Visit', sub: 'Visit the clinic', icon: 'building' },
 ];
 
-function nextDays(count: number): { key: string; weekday: string; day: string; month: string; iso: string }[] {
-  const days: { key: string; weekday: string; day: string; month: string; iso: string }[] = [];
-  const today = new Date();
-  for (let i = 0; i < count; i += 1) {
-    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
-    days.push({
-      key: d.toISOString().split('T')[0],
-      weekday: i === 0 ? 'Today' : d.toLocaleDateString('en-GB', { weekday: 'short' }),
-      day: String(d.getDate()).padStart(2, '0'),
-      month: d.toLocaleDateString('en-GB', { month: 'short' }),
-      iso: d.toISOString().split('T')[0],
-    });
-  }
-  return days;
-}
-
 export default function BookingScreen({ navigation, route }: Props): React.JSX.Element {
+  useThemePreference();
   const params = route.params;
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
@@ -120,9 +106,9 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
 
   /* ------------------------------- data load ------------------------------- */
   /**
-   * Availability backend se: doctor ki working days/hours se bane dates +
+   * Availability backend se: vendor ki working days/hours se bane dates +
    * slots, jinme booked aur aaj ke past slots already hat chuke hain.
-   * Fail ho jaaye to local fallback (nextDays + FALLBACK_SLOTS) chalega.
+   * Fail ho jaaye to koi fabricated slot NAHI dikhta — error + Retry.
    */
   const load = useCallback(async () => {
     setLoading(true);
@@ -136,11 +122,16 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
 
       const [detail, avail] = await Promise.all([
         isDoctorMode && targetId ? api.vendors.byId(targetId) : Promise.resolve(null),
-        targetId ? api.vendors.availability(targetId, 14).catch(() => null) : Promise.resolve(null),
+        targetId
+          ? api.vendors.availability(targetId, 14).catch(() => null)
+          : Promise.resolve(null),
       ]);
 
       setVendor(detail);
       setAvailability(avail);
+      if (targetId && !avail) {
+        setError('Slots load nahi hue. Neeche Retry dabakar dobara koshish karein.');
+      }
 
       /* Pehla jis din khali slot ho wahi date select (aaj nahi to kal/agle). */
       const firstOpen = avail?.days?.find(d => d.working && d.slots.length > 0);
@@ -159,7 +150,7 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
     load();
   }, [load]);
 
-  /* Date strip: backend availability, warna local 7-din fallback. */
+  /* Date strip: backend availability se hi. Slots khali ho to wahi khali. */
   const viewDays = useMemo(() => {
     const source = availability?.days?.length
       ? availability.days.map((day, index) => ({
@@ -171,15 +162,7 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
           slots: day.slots,
           isToday: day.isToday,
         }))
-      : nextDays(7).map((day, index) => ({
-          key: day.iso,
-          weekday: day.weekday,
-          day: day.day,
-          month: day.month,
-          working: true,
-          slots: FALLBACK_SLOTS,
-          isToday: index === 0,
-        }));
+      : [];
 
     /* Selected day band ho to pehla working day pakad lo. */
     if (source.length && !source.some(d => d.key === selectedDay && d.working)) {
@@ -224,6 +207,7 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
       return 0;
     }
     const pricing =
+      vendor.pricing ||
       vendor.doctorDetails?.pricing ||
       vendor.compounderDetails?.pricing ||
       vendor.nurseDetails?.pricing ||
@@ -288,7 +272,13 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
           pincode: user?.pincode,
         },
         serviceName,
-        serviceType: isLabMode ? 'lab_test' : consultationType === 'Online Consultation' ? 'online_consultation' : 'home_visit',
+        serviceType: isLabMode
+          ? 'lab_test'
+          : consultationType === 'Online Consultation'
+            ? 'online_consultation'
+            : consultationType === 'Clinic Visit'
+              ? 'clinic_visit'
+              : 'home_visit',
         doctorName: vendor?.name,
         patientName: patientName.trim(),
         patientPhone: patientPhone.trim(),
@@ -569,9 +559,11 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
               <View style={styles.slotEmpty}>
                 <Icon name="calendar" size={16} color={colors.textMuted} />
                 <Text style={[typography.caption, { flex: 1, textAlign: 'center' }]}>
-                  {viewDays.find(d => d.key === selectedDay)?.working === false
-                    ? 'Is din provider kaam nahi karta — dusri date chuniye.'
-                    : 'Is din ke saare slots bhar chuke hain — dusri date chuniye.'}
+                  {viewDays.length === 0
+                    ? 'Provider ki availability abhi set nahi hai — thodi der baad dobara dekhiye.'
+                    : viewDays.find(d => d.key === selectedDay)?.working === false
+                      ? 'Is din provider kaam nahi karta — dusri date chuniye.'
+                      : 'Is din ke saare slots bhar chuke hain — dusri date chuniye.'}
                 </Text>
               </View>
             ) : (

@@ -2,15 +2,23 @@
  * Brand logo components — assets folder ke official logos use hote hain.
  *  <Logo />      -> full horizontal logo (Splash / Auth / Onboarding)
  *  <LogoMark />  -> sirf heart mark (App bar / tabs)
+ *
+ * Assets transparent hain (white background hata diya gaya hai) — light/dark
+ * dono themes par bina white box ke chalte hain. Dark theme par dark navy text
+ * dikh nahi paata, is liye `-dark` (lightened) variant use hota hai.
  */
 
 import React from 'react';
 import { Image, ImageStyle, StyleProp, Text, View } from 'react-native';
+import { colors } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
-/** logo.jpg ka trimmed version — original me content ke chaaro taraf bahut
- *  zyada white padding thi, isliye logo ke neeche space zyada dikhta tha. */
-const FULL_LOGO = require('../../assets/logo-trimmed.jpg');
-const LOGO_MARK = require('../../assets/icon.png');
+/** Full horizontal logo — white bg removed, 829 x 257. */
+const FULL_LOGO = require('../../assets/slovecare_transparent.png');
+const FULL_LOGO_DARK = require('../../assets/slovecare_transparent_dark.png');
+/** Sirf heart mark — white bg removed. */
+const LOGO_MARK = require('../../assets/icon-transparent.png');
+const LOGO_MARK_DARK = require('../../assets/icon-transparent-dark.png');
 
 /**
  * Sirf wordmark — "SloveCare" text, bina heart mark ke.
@@ -30,7 +38,7 @@ export function Wordmark({
           fontSize: size,
           fontWeight: '800',
           letterSpacing: -0.5,
-          color: '#0B3C8D',
+          color: colors.brandBlue,
         }}
       >
         Slove
@@ -40,7 +48,7 @@ export function Wordmark({
           fontSize: size,
           fontWeight: '800',
           letterSpacing: -0.5,
-          color: '#0E9E6E',
+          color: colors.brandGreen,
         }}
       >
         Care
@@ -56,11 +64,12 @@ export function Logo({
   width?: number;
   style?: StyleProp<ImageStyle>;
 }): React.JSX.Element {
-  // logo-trimmed.jpg aspect ratio ≈ 829 x 257
+  const { dark } = useThemePreference();
+  // slovecare_transparent.png aspect ratio ≈ 829 x 257
   const height = Math.round((width * 257) / 829);
   return (
     <Image
-      source={FULL_LOGO}
+      source={dark ? FULL_LOGO_DARK : FULL_LOGO}
       resizeMode="contain"
       style={[{ width, height }, style]}
       accessibilityLabel="SloveCare logo"
@@ -75,9 +84,10 @@ export function LogoMark({
   size?: number;
   style?: StyleProp<ImageStyle>;
 }): React.JSX.Element {
+  const { dark } = useThemePreference();
   return (
     <Image
-      source={LOGO_MARK}
+      source={dark ? LOGO_MARK_DARK : LOGO_MARK}
       resizeMode="contain"
       style={[{ width: size, height: size }, style]}
       accessibilityLabel="SloveCare"

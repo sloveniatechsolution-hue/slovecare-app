@@ -22,7 +22,18 @@ interface AuthContextValue {
   googleLogin: (credential: string) => Promise<User>;
   /** Phone + OTP login (naye number par account apne aap ban jaata hai) */
   phoneLogin: (phone: string, otp: string) => Promise<User>;
-  register: (input: { name: string; email?: string; phone?: string; password?: string }) => Promise<User>;
+  register: (input: {
+    name: string;
+    email?: string;
+    phone?: string;
+    password?: string;
+    degree?: string;
+    selectedType?: string;
+    regNumber?: string;
+    regAuthority?: string;
+    qualification?: string;
+    labName?: string;
+  }) => Promise<User>;
   logout: () => Promise<void>;
   /** Local user object update (health profile save hone ke baad) */
   updateUser: (patch: Partial<User>) => void;

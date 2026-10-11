@@ -22,6 +22,7 @@ import PharmacyScreen from '../screens/PharmacyScreen';
 */
 import ProfileScreen from '../screens/ProfileScreen';
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+import { useThemeKey, useThemePreference } from '../theme/ThemeContext';
 
 const Tab = createBottomTabNavigator();
 
@@ -152,6 +153,7 @@ function TabItem({
 
 function TabBar({ state, navigation }: BottomTabBarProps): React.JSX.Element {
   const insets = useSafeAreaInsets();
+  const themeKey = useThemeKey();
   const [rowWidth, setRowWidth] = useState(0);
 
   const tabWidth = rowWidth > 0 ? rowWidth / state.routes.length : 0;
@@ -175,50 +177,56 @@ function TabBar({ state, navigation }: BottomTabBarProps): React.JSX.Element {
     extrapolate: 'clamp',
   });
 
+  /* Tab bar ke bahar koi aur themed view nahi hai, is liye yahan bhi wahi
+     themeKey remount lagta hai — warna tab bar ke colours (stable stylesheet
+     references) purane hi reh jaate the. */
   return (
-    <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 6) }]}>
-      <View style={styles.bar}>
-        <View style={styles.row} onLayout={event => setRowWidth(event.nativeEvent.layout.width)}>
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.pill, { width: pillWidth, transform: [{ translateX }] }]}
-          >
-            <PillGradient />
-          </Animated.View>
-          {state.routes.map((route, index) => {
-            const meta = TAB_META[route.name] ?? { label: route.name, icon: 'grid' as IconName };
-            const focused = state.index === index;
+    <React.Fragment key={themeKey}>
+      <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+        <View style={styles.bar}>
+          <View style={styles.row} onLayout={event => setRowWidth(event.nativeEvent.layout.width)}>
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.pill, { width: pillWidth, transform: [{ translateX }] }]}
+            >
+              <PillGradient />
+            </Animated.View>
+            {state.routes.map((route, index) => {
+              const meta = TAB_META[route.name] ?? { label: route.name, icon: 'grid' as IconName };
+              const focused = state.index === index;
 
-            const onPress = () => {
-              const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-              if (!focused && !event.defaultPrevented) {
-                // Keep the nested screen state intact while switching tabs. Using
-                // the route key here makes this work consistently from every tab.
-                navigation.navigate({ name: route.name, params: route.params, merge: true } as never);
-              }
-            };
+              const onPress = () => {
+                const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+                if (!focused && !event.defaultPrevented) {
+                  // Keep the nested screen state intact while switching tabs. Using
+                  // the route key here makes this work consistently from every tab.
+                  navigation.navigate({ name: route.name, params: route.params, merge: true } as never);
+                }
+              };
 
-            const onLongPress = () => {
-              navigation.emit({ type: 'tabLongPress', target: route.key });
-            };
+              const onLongPress = () => {
+                navigation.emit({ type: 'tabLongPress', target: route.key });
+              };
 
-            return (
-              <TabItem
-                key={route.key}
-                meta={meta}
-                focused={focused}
-                onPress={onPress}
-                onLongPress={onLongPress}
-              />
-            );
-          })}
+              return (
+                <TabItem
+                  key={route.key}
+                  meta={meta}
+                  focused={focused}
+                  onPress={onPress}
+                  onLongPress={onLongPress}
+                />
+              );
+            })}
+          </View>
         </View>
       </View>
-    </View>
+    </React.Fragment>
   );
 }
 
 export default function TabNavigator(): React.JSX.Element {
+  useThemePreference();
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.background } }}

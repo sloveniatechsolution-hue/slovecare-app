@@ -10,10 +10,13 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppHeader from '../components/AppHeader';
 import Icon, { IconName } from '../components/Icon';
 import { AppButton, Badge, Card, EmptyState, ErrorState, Loader, Screen } from '../components/UI';
-import api, { Booking } from '../api/api';
+import api, { Booking, bookingTime } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from '../navigation/types';
+
 import { colors, radius, spacing, typography } from '../theme/theme';
+
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Filter = 'upcoming' | 'completed' | 'all';
@@ -98,6 +101,7 @@ function bookingCaption(item: Booking): string {
 }
 
 export default function AppointmentsScreen({ navigation }: { navigation: Nav }): React.JSX.Element {
+  useThemePreference();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
@@ -228,6 +232,9 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
           }
           renderItem={({ item }) => {
             const cancellable = ['new', 'upcoming', 'pending', 'confirmed'].includes(item.status);
+            const isOnline =
+              item.serviceType === 'online' || item.serviceType === 'online_consultation';
+            const joinable = isOnline && UPCOMING_STATUSES.includes(item.status);
             return (
               <Card>
                 <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>
@@ -243,6 +250,13 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
                     </Text>
                   </View>
                   <Badge label={item.status.replace('_', ' ')} tone={STATUS_TONE[item.status] ?? 'neutral'} />
+                  {item.isDelayed ? (
+                    <Badge
+                      label={`Delayed ${item.delayMinutes ?? ''} min`.trim()}
+                      tone="warning"
+                      icon="clock"
+                    />
+                  ) : null}
                 </View>
 
                 <View style={styles.metaGrid}>
@@ -253,7 +267,7 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
                   <View style={styles.metaItem}>
                     <Icon name="clock" size={14} color={colors.textMuted} />
                     <Text style={typography.caption} numberOfLines={1}>
-                      {item.timeSlot}
+                      {bookingTime(item)}
                     </Text>
                   </View>
                   <View style={styles.metaItem}>
@@ -278,6 +292,21 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
                 ) : null}
 
                 <View style={styles.actions}>
+                  {joinable ? (
+                    <AppButton
+                      label="Join Consultation"
+                      icon="video"
+                      size="sm"
+                      full={false}
+                      style={{ flex: 1 }}
+                      onPress={() =>
+                        navigation.navigate('Consultation', {
+                          bookingId: item.id,
+                          patientName: item.patientName,
+                        })
+                      }
+                    />
+                  ) : null}
                   <AppButton
                     label="Details"
                     icon="info"
@@ -288,7 +317,7 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
                     onPress={() =>
                       Alert.alert(
                         `${item.serviceName}`,
-                        `Booking: ${item.id}\nStatus: ${item.status}\nDate: ${item.date} • ${item.timeSlot}\nPatient: ${item.patientName}\nAmount: ₹${item.amount}\nAddress: ${item.customer?.address ?? '—'}`,
+                        `Booking: ${item.id}\nStatus: ${item.status}${item.isDelayed ? ` (delayed ${item.delayMinutes} min)` : ''}\nDate: ${item.date} • ${bookingTime(item)}\nPatient: ${item.patientName}\nAmount: ₹${item.amount}\nAddress: ${item.customer?.address ?? '—'}`,
                       )
                     }
                   />

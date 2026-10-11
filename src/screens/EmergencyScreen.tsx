@@ -22,7 +22,10 @@ import { AppButton, Card, GradientCard, Screen, SectionHeader, TextField } from 
 import api, { EmergencySOSResponse } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from '../navigation/types';
+
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Emergency'>;
 
@@ -37,6 +40,7 @@ const SEVERITIES: { key: 'critical' | 'high' | 'moderate'; label: string; sub: s
 const REQUIREMENTS = ['Emergency Doctor & Medical Support', 'ICU Ambulance', 'Nursing Support', 'Blood Requirement'];
 
 export default function EmergencyScreen({ navigation }: Props): React.JSX.Element {
+  useThemePreference();
   const { user } = useAuth();
 
   const [patientName, setPatientName] = useState(user?.name ?? '');

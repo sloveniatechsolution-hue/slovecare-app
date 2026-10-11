@@ -22,7 +22,10 @@ import { AppButton, Card, Chip, Screen, SectionHeader, SelectField, TextField } 
 import api, { BloodGroup } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from '../navigation/types';
+
 import { colors, radius, spacing, typography } from '../theme/theme';
+
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'HealthProfile'>;
 
@@ -35,6 +38,7 @@ const COUNTRY = 'IN';
 const INDIA_STATES = State.getStatesOfCountry(COUNTRY);
 
 export default function HealthProfileScreen({ navigation, route }: Props): React.JSX.Element {
+  useThemePreference();
   const { user, updateUser } = useAuth();
   const isSetup = !user?.isProfileComplete;
 

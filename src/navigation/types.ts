@@ -2,7 +2,7 @@ import { NavigatorScreenParams } from '@react-navigation/native';
 import { LabTest, Medicine } from '../api/api';
 
 /** Staff type — Doctors tab ke filter/chips ke liye. */
-export type StaffType = 'doctor' | 'compounder' | 'nurse' | 'caretaker';
+export type StaffType = 'doctor' | 'compounder' | 'nurse' | 'caretaker' | 'lab';
 
 /** Saare app routes — typed navigation ke liye. */
 export type RootStackParamList = {
@@ -23,6 +23,8 @@ export type RootStackParamList = {
   Services: undefined;
   /** Prescription Reader — photo → PaddleOCR → Gemini analysis. */
   PrescriptionReader: undefined;
+  /** Online consultation room (Jitsi) — provider ke saath video visit. */
+  Consultation: { bookingId: string; patientName?: string };
 };
 
 export type TabParamList = {

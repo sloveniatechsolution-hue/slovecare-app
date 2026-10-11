@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Linking, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppHeader from '../components/AppHeader';
@@ -12,11 +12,15 @@ import Icon from '../components/Icon';
 import { Badge, Card, EmptyState, ErrorState, Loader, Screen } from '../components/UI';
 import api, { UserDashboard } from '../api/api';
 import { RootStackParamList } from '../navigation/types';
+
 import { colors, radius, spacing, typography } from '../theme/theme';
+
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'LabReports'>;
 
 export default function LabReportsScreen({ navigation }: Props): React.JSX.Element {
+  useThemePreference();
   const insets = useSafeAreaInsets();
   const [data, setData] = useState<UserDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,6 +45,23 @@ export default function LabReportsScreen({ navigation }: Props): React.JSX.Eleme
 
   const reports = data?.labReports ?? [];
   const prescriptions = data?.prescriptions ?? [];
+
+  /**
+   * Asli file (provider ki upload ki PDF/image) browser me kholein.
+   * Relative link ho to file abhi pending hai — bina fabricated URL ke batate hain.
+   */
+  const openFile = useCallback((url: string | undefined, title: string) => {
+    if (url && /^https?:\/\//i.test(url)) {
+      Linking.openURL(url).catch(() =>
+        Alert.alert('Could not open', 'File link open nahi ho payi — thodi der baad try karein.'),
+      );
+      return;
+    }
+    Alert.alert(
+      title,
+      'Ye file abhi provider ki taraf se upload nahi hui hai — ready hote hi yahan aa jayegi.',
+    );
+  }, []);
 
   return (
     <Screen>
@@ -106,6 +127,19 @@ export default function LabReportsScreen({ navigation }: Props): React.JSX.Eleme
                         </View>
                         <Badge label="Ready" tone="success" />
                       </View>
+                      {rx.files && rx.files.length > 0 ? (
+                        <View style={{ gap: 6, marginTop: spacing.sm }}>
+                          {rx.files.map((file, index) => (
+                            <Text
+                              key={`${file.fileUrl}-${index}`}
+                              style={[typography.smallMedium, { color: colors.blue }]}
+                              onPress={() => openFile(file.fileUrl, file.title || 'Prescription file')}
+                            >
+                              {file.title || `Attachment ${index + 1}`} →
+                            </Text>
+                          ))}
+                        </View>
+                      ) : null}
                     </Card>
                   ))}
                 </View>
@@ -151,14 +185,15 @@ export default function LabReportsScreen({ navigation }: Props): React.JSX.Eleme
               </View>
 
               <View style={styles.actions}>
-                <Badge label={`Booking ${item.bookingId}`} tone="neutral" />
+                <Badge
+                  label={item.fileUrl ? `${(item.fileType || 'file').toUpperCase()} ready` : `Booking ${item.bookingId}`}
+                  tone={item.fileUrl ? 'success' : 'neutral'}
+                />
                 <Text
                   style={[typography.smallMedium, { color: colors.blue }]}
-                  onPress={() =>
-                    Alert.alert('Download report', `Report link: ${item.downloadUrl}`)
-                  }
+                  onPress={() => openFile(item.fileUrl || item.downloadUrl, item.testName)}
                 >
-                  View report →
+                  {item.fileUrl ? 'Open report →' : 'View report →'}
                 </Text>
               </View>
             </Card>

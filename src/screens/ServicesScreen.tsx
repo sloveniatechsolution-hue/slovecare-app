@@ -11,7 +11,10 @@ import Icon, { IconName } from '../components/Icon';
 import { AppButton, Badge, Card, EmptyState, ErrorState, Loader, Screen, SectionHeader } from '../components/UI';
 import api, { HealthcareService } from '../api/api';
 import { RootStackParamList } from '../navigation/types';
+
 import { colors, radius, spacing, typography } from '../theme/theme';
+
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Services'>;
 
@@ -30,6 +33,7 @@ const WELLNESS = [
 ];
 
 export default function ServicesScreen({ navigation }: Props): React.JSX.Element {
+  useThemePreference();
   const [services, setServices] = useState<HealthcareService[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

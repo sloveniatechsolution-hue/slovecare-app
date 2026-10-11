@@ -12,11 +12,15 @@ import Icon from '../components/Icon';
 import { AppButton, Badge, Card, EmptyState, ErrorState, Loader, Screen } from '../components/UI';
 import api, { LabTest } from '../api/api';
 import { RootStackParamList } from '../navigation/types';
+
 import { colors, radius, spacing, typography } from '../theme/theme';
+
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function LabTestsScreen(): React.JSX.Element {
+  useThemePreference();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
 

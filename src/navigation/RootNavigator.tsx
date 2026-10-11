@@ -15,25 +15,21 @@ import EmergencyScreen from '../screens/EmergencyScreen';
 import LabReportsScreen from '../screens/LabReportsScreen';
 import ServicesScreen from '../screens/ServicesScreen';
 import PrescriptionReaderScreen from '../screens/PrescriptionReaderScreen';
+import ConsultationScreen from '../screens/ConsultationScreen';
 import TabNavigator from './TabNavigator';
 import { RootStackParamList } from './types';
 import { colors } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-const navTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    background: colors.background,
-    primary: colors.blue,
-    card: colors.card,
-    text: colors.text,
-    border: colors.border,
-  },
-};
-
 export default function RootNavigator(): React.JSX.Element {
+  const { dark } = useThemePreference();
+  const navTheme = {
+    ...DefaultTheme,
+    dark,
+    colors: { ...DefaultTheme.colors, background: colors.background, primary: colors.blue, card: colors.card, text: colors.text, border: colors.border },
+  };
   return (
     <NavigationContainer theme={navTheme}>
       <Stack.Navigator
@@ -55,6 +51,7 @@ export default function RootNavigator(): React.JSX.Element {
         <Stack.Screen name="LabReports" component={LabReportsScreen} />
         <Stack.Screen name="Services" component={ServicesScreen} />
         <Stack.Screen name="PrescriptionReader" component={PrescriptionReaderScreen} />
+        <Stack.Screen name="Consultation" component={ConsultationScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

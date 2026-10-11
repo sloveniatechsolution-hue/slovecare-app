@@ -9,17 +9,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppHeader from '../components/AppHeader';
 import Icon, { IconName } from '../components/Icon';
-import { photoUrl, staffLabel, visitFee, VerificationBadge } from '../components/DoctorCard';
+import { DegreeVerifiedBadge, photoUrl, staffLabel, visitFee, VerificationBadge } from '../components/DoctorCard';
 import { AppButton, Badge, Card, ErrorState, Loader, Rating, Screen, SectionHeader } from '../components/UI';
-import api, { Review, Vendor, VendorStats } from '../api/api';
+import api, { LabTest, Review, Vendor, VendorStats } from '../api/api';
 import { RootStackParamList } from '../navigation/types';
+
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DoctorDetail'>;
 
 const HERO_FALLBACK_H = 230;
 
 export default function DoctorDetailScreen({ navigation, route }: Props): React.JSX.Element {
+  useThemePreference();
   const { doctorId } = route.params;
 
   const insets = useSafeAreaInsets();
@@ -28,6 +32,7 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
   const [doctor, setDoctor] = useState<Vendor | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [stats, setStats] = useState<VendorStats | null>(null);
+  const [labTests, setLabTests] = useState<LabTest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [heroHeight, setHeroHeight] = useState(HERO_FALLBACK_H);
@@ -45,6 +50,13 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
       setDoctor(detail);
       setReviews(reviewList.length ? reviewList : detail.reviews ?? []);
       api.vendors.stats(doctorId).then(setStats).catch(() => {});
+      // Lab profile — apne tests + daam (vendor panel ke Pricing screen se).
+      if (detail.type === 'lab') {
+        api.labTests
+          .list({ vendorId: doctorId })
+          .then(setLabTests)
+          .catch(() => setLabTests([]));
+      }
     } catch (e) {
       setError((e as Error).message || 'Could not load profile.');
     } finally {
@@ -99,18 +111,51 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
     );
   }
 
+  const lab = doctor.type === 'lab' ? doctor.labDetails : undefined;
   const details =
-    doctor.doctorDetails || doctor.compounderDetails || doctor.nurseDetails || doctor.caretakerDetails;
-  const pricing = details?.pricing ?? {};
+    doctor.doctorDetails ||
+    doctor.compounderDetails ||
+    doctor.nurseDetails ||
+    doctor.caretakerDetails ||
+    undefined;
+  /** Vendor panel se set ki gayi asli pricing (sabse upar). */
+  const pricing = doctor.pricing ?? details?.pricing ?? lab?.pricing ?? {};
   const fee = visitFee(doctor);
 
+  /* Sirf vendor-set fees dikhate hain — koi fabricated number nahi. */
+  const feeRows: { label: string; value: number | undefined }[] = [
+    { label: 'Home Visit', value: pricing.homeVisitFee },
+    { label: 'Online Consultation', value: pricing.onlineConsultationFee },
+    { label: 'Clinic Visit', value: pricing.clinicVisitFee },
+    { label: 'Per Visit', value: pricing.perVisit },
+    { label: 'Per Hour', value: pricing.perHour },
+    { label: 'Half Day', value: pricing.halfDay },
+    { label: 'Full Day', value: pricing.fullDay },
+    { label: 'Injection', value: pricing.injectionFee },
+    { label: 'Dressing', value: pricing.dressingFee },
+    { label: 'BP / Sugar Check', value: pricing.bpSugarCheckFee },
+    { label: 'IV Drip', value: pricing.ivDripFee },
+    { label: 'Home Collection', value: pricing.homeCollectionFee },
+  ].filter((row): row is { label: string; value: number } => typeof row.value === 'number');
+
   const highlights: { icon: IconName; label: string }[] = [
-    { icon: 'shield-check', label: details?.registrationNumber || 'Verified & background checked' },
-    { icon: 'award', label: details?.experienceYears ? `${details.experienceYears} years experience` : 'Experienced professional' },
+    {
+      icon: 'shield-check',
+      label:
+        details?.registrationNumber ||
+        lab?.licenseNumber ||
+        'Verified & background checked',
+    },
+    {
+      icon: 'award',
+      label: details?.experienceYears
+        ? `${details.experienceYears} years experience`
+        : 'Experienced professional',
+    },
     { icon: 'message-circle', label: (details?.languages ?? ['Hindi', 'English']).join(' • ') },
   ];
 
-  const serviceChips = Object.entries(details?.services ?? {})
+  const serviceChips = Object.entries(details?.services ?? lab?.services ?? doctor.services ?? {})
     .filter(([, enabled]) => Boolean(enabled))
     .map(([key]) => labelForService(key));
 
@@ -147,6 +192,7 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
           <View style={styles.heroOverlay}>
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
               <VerificationBadge doctor={doctor} />
+              <DegreeVerifiedBadge doctor={doctor} />
               {doctor.emergencyAvailable ? <Badge label="Emergency" tone="danger" icon="zap" /> : null}
               {doctor.liveStatus === 'available' ? <Badge label="Available" tone="brand" /> : null}
             </View>
@@ -160,7 +206,12 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
             {staffLabel(doctor)}
           </Text>
           <Text style={[typography.small, { marginTop: 4 }]}>
-            {[details?.qualification, details?.experienceYears ? `${details.experienceYears} yrs exp` : null]
+            {[
+              details?.qualification || doctor.qualification,
+              (details?.experienceYears ?? doctor.experienceYears)
+                ? `${details?.experienceYears ?? doctor.experienceYears} yrs exp`
+                : null,
+            ]
               .filter(Boolean)
               .join(' • ')}
           </Text>
@@ -169,19 +220,109 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
           </View>
         </View>
 
-        {/* Stats strip */}
+        {/* Stats strip — sirf vendor-set daam + asli bookings */}
         <View style={styles.statsStrip}>
           {[
-            { label: 'Home Visit', value: `₹${fee}` },
-            { label: 'Online', value: `₹${pricing.onlineConsultationFee ?? Math.max(fee - 200, 199)}` },
-            { label: 'Bookings', value: String(stats?.totalBookings ?? doctor.totalBookingsCount ?? 0) },
+            ...feeRows.slice(0, 2).map(row => ({ label: row.label, value: `₹${row.value}` })),
+            {
+              label: 'Bookings',
+              value: String(stats?.totalBookings ?? doctor.totalBookingsCount ?? 0),
+            },
           ].map(s => (
             <View key={s.label} style={styles.statItem}>
-              <Text style={styles.statValue}>{s.value}</Text>
-              <Text style={[typography.caption, { textAlign: 'center' }]}>{s.label}</Text>
+              <Text style={styles.statValue} numberOfLines={1}>{s.value}</Text>
+              <Text style={[typography.caption, { textAlign: 'center' }]} numberOfLines={1}>{s.label}</Text>
             </View>
           ))}
         </View>
+
+        {/* Vendor-set fees — panel ke "Services & Prices" se aate hain */}
+        {feeRows.length ? (
+          <Card style={{ marginTop: spacing.lg }}>
+            <SectionHeader title="Fees" subtitle="Provider ne khud set kiye hain" />
+            <View style={{ gap: 2 }}>
+              {feeRows.map(row => (
+                <View key={row.label} style={styles.feeRow}>
+                  <Text style={[typography.small, { flex: 1 }]}>{row.label}</Text>
+                  <Text style={[typography.smallMedium, { color: colors.primary }]}>₹{row.value}</Text>
+                </View>
+              ))}
+            </View>
+          </Card>
+        ) : null}
+
+        {/* Lab profile — naam, license, collection timing + tests */}
+        {lab ? (
+          <Card style={{ marginTop: spacing.lg }}>
+            <SectionHeader title="Lab Details" />
+            <View style={{ gap: spacing.md }}>
+              {lab.labName ? (
+                <View style={styles.highlightRow}>
+                  <View style={styles.highlightIcon}>
+                    <Icon name="flask" size={16} color={colors.primary} />
+                  </View>
+                  <Text style={[typography.small, { flex: 1 }]}>{lab.labName}</Text>
+                </View>
+              ) : null}
+              {lab.licenseNumber ? (
+                <View style={styles.highlightRow}>
+                  <View style={styles.highlightIcon}>
+                    <Icon name="shield-check" size={16} color={colors.primary} />
+                  </View>
+                  <Text style={[typography.small, { flex: 1 }]}>License: {lab.licenseNumber}</Text>
+                </View>
+              ) : null}
+              <View style={styles.highlightRow}>
+                <View style={styles.highlightIcon}>
+                  <Icon name="home" size={16} color={colors.primary} />
+                </View>
+                <Text style={[typography.small, { flex: 1 }]}>
+                  {lab.homeSampleCollectionAvailable
+                    ? `Home sample collection available${lab.homeCollectionFee ? ` (₹${lab.homeCollectionFee})` : ''}`
+                    : 'Visit the lab for samples'}
+                </Text>
+              </View>
+              {lab.labTimings?.start ? (
+                <View style={styles.highlightRow}>
+                  <View style={styles.highlightIcon}>
+                    <Icon name="clock" size={16} color={colors.primary} />
+                  </View>
+                  <Text style={[typography.small, { flex: 1 }]}>
+                    Lab timings: {lab.labTimings.start} – {lab.labTimings.end}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </Card>
+        ) : null}
+
+        {/* Lab tests + daam + seedha booking */}
+        {lab && labTests.length ? (
+          <Card style={{ marginTop: spacing.lg }}>
+            <SectionHeader title="Lab Tests" subtitle={`${labTests.length} tests available`} />
+            <View style={{ gap: spacing.sm }}>
+              {labTests.map(test => (
+                <View key={test.id} style={styles.testRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={typography.smallMedium} numberOfLines={1}>{test.name}</Text>
+                    {test.category ? (
+                      <Text style={typography.caption}>{test.category}</Text>
+                    ) : null}
+                  </View>
+                  <Text style={[typography.smallMedium, { color: colors.primary }]}>
+                    ₹{test.discountedPrice ?? test.price}
+                  </Text>
+                  <AppButton
+                    label="Book"
+                    size="sm"
+                    variant="outline"
+                    onPress={() => navigation.navigate('Booking', { mode: 'lab', test })}
+                  />
+                </View>
+              ))}
+            </View>
+          </Card>
+        ) : null}
 
         {/* Bio */}
         {doctor.doctorDetails?.bio ? (
@@ -228,15 +369,17 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
           <View style={styles.infoRow}>
             <Icon name="clock" size={15} color={colors.textMuted} />
             <Text style={[typography.small, { flex: 1 }]}>
-              {details?.workingHours
-                ? `${details.workingHours.start} – ${details.workingHours.end}`
-                : 'Mon – Sat, 9:00 AM – 8:00 PM'}
+              {(() => {
+                const hours = details?.workingHours ?? doctor.workingHours ?? lab?.labTimings;
+                return hours?.start ? `${hours.start} – ${hours.end}` : 'Timings on call';
+              })()}
             </Text>
           </View>
           <View style={styles.infoRow}>
             <Icon name="calendar" size={15} color={colors.textMuted} />
             <Text style={[typography.small, { flex: 1 }]}>
-              {(details?.workingDays ?? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']).join(', ')}
+              {(details?.workingDays ?? doctor.workingDays ?? lab?.workingDays)?.join(', ') ||
+                'Working days on call'}
             </Text>
           </View>
           <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
@@ -289,21 +432,26 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
         </View>
       </ScrollView>
 
-      {/* Sticky CTA — system nav bar ke upar (safe-area) */}
-      <View style={[styles.cta, { paddingBottom: spacing.lg + insets.bottom }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={typography.caption}>Home visit fee</Text>
-          <Text style={typography.price}>₹{fee}</Text>
+      {/* Sticky CTA — system nav bar ke upar (safe-area).
+          Lab profile par tests ki cards se hi booking hoti hai. */}
+      {!lab ? (
+        <View style={[styles.cta, { paddingBottom: spacing.lg + insets.bottom }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={typography.caption}>
+              {pricing.homeVisitFee != null ? 'Home visit fee' : 'Consultation fee'}
+            </Text>
+            <Text style={typography.price}>{fee > 0 ? `₹${fee}` : 'On request'}</Text>
+          </View>
+          <View style={{ flex: 2 }}>
+            <AppButton
+              label="Book Appointment"
+              icon="calendar"
+              size="lg"
+              onPress={() => navigation.navigate('Booking', { mode: 'doctor', doctorId })}
+            />
+          </View>
         </View>
-        <View style={{ flex: 2 }}>
-          <AppButton
-            label="Book Appointment"
-            icon="calendar"
-            size="lg"
-            onPress={() => navigation.navigate('Booking', { mode: 'doctor', doctorId })}
-          />
-        </View>
-      </View>
+      ) : null}
     </Screen>
   );
 }
@@ -338,6 +486,22 @@ function initials(name?: string): string {
 }
 
 const styles = StyleSheet.create({
+  feeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  testRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
   hero: {
     height: 230,
     borderRadius: radius.lg,

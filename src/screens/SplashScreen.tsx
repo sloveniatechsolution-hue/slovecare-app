@@ -19,7 +19,9 @@ import { Screen } from '../components/UI';
 import Icon, { IconName } from '../components/Icon';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from '../navigation/types';
-import { colors, spacing, typography } from '../theme/theme';
+import { colors, gradients, spacing, typography } from '../theme/theme';
+
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Splash'>;
 
@@ -53,9 +55,12 @@ const STATUS_MESSAGES = [
 ];
 
 export default function SplashScreen({ navigation }: Props): React.JSX.Element {
+  useThemePreference();
   const { initializing, isLoggedIn, needsHealthProfile } = useAuth();
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
+  /* Splash ke wash ke stops bhi theme ke saath badalte hain (dark = deep ink). */
+  const wash = gradients.wash;
 
   /* Chhoti/almihti devices par content compress karo taki footer kabhi overlap na kare */
   const compact = winH < 720;
@@ -291,9 +296,9 @@ export default function SplashScreen({ navigation }: Props): React.JSX.Element {
         <Svg width="100%" height="100%">
           <Defs>
             <LinearGradient id="splashBg" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor="#E8F4FB" />
-              <Stop offset="0.55" stopColor="#F7FBFE" />
-              <Stop offset="1" stopColor="#FFFFFF" />
+              <Stop offset="0" stopColor={wash[0]} />
+              <Stop offset="0.55" stopColor={wash[1]} />
+              <Stop offset="1" stopColor={wash[2]} />
             </LinearGradient>
           </Defs>
           <Rect width="100%" height="100%" fill="url(#splashBg)" />

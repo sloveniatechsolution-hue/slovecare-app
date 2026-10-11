@@ -21,6 +21,7 @@ import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon, { IconName } from './Icon';
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+import { useThemeKey, useThemePreference } from '../theme/ThemeContext';
 
 /* -------------------------------------------------------------------------- */
 /*  Screen wrapper                                                             */
@@ -35,7 +36,28 @@ export function Screen({
   style?: StyleProp<ViewStyle>;
   backgroundColor?: string;
 }): React.JSX.Element {
-  return <View style={[{ flex: 1, backgroundColor }, style]}>{children}</View>;
+  /* Theme subscription — card surface colors dynamic getters se aate hain. */
+  useThemePreference();
+  const themeKey = useThemeKey();
+
+  /**
+   * React Native ka style diffing (ReactNativeAttributePayload → `diffProperties`)
+   * `prevProp === nextProp` par seedha `continue` kar deta hai, aur style arrays me
+   * bhi har element ki reference compare hoti hai. Matlab: jitne bhi styles
+   * `StyleSheet.create` se bane hain (stable object reference), unki getter-waali
+   * colour values dobara kabhi diff hi nahi hoti — sirf naye inline objects ke
+   * values update hote hain. Isi wajah se theme toggle karne par screen
+   * "aadha-adhura" theme hoti thi aur hard refresh chahiye padta tha.
+   *
+   * themeKey badalne par poora subtree naye sire se mount hota hai — bilkul hard
+   * refresh jaisa result, bina app restart/state khoye. Scroll position ja rehta
+   * hai, lekin poori screen ek hi frame me consistently theme hoti hai.
+   */
+  return (
+    <React.Fragment key={themeKey}>
+      <View style={[{ flex: 1, backgroundColor }, style]}>{children}</View>
+    </React.Fragment>
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -89,6 +111,8 @@ export function Card({
   padded?: boolean;
   elevated?: boolean;
 }): React.JSX.Element {
+  /* Theme subscription — card surface colors dynamic getters se aate hain. */
+  useThemePreference();
   return (
     <View
       style={[
@@ -466,9 +490,9 @@ export function Badge({
   const tones: Record<string, { bg: string; fg: string }> = {
     neutral: { bg: colors.cardMuted, fg: colors.textSecondary },
     success: { bg: colors.successLight, fg: colors.success },
-    warning: { bg: colors.warningLight, fg: '#B45309' },
+    warning: { bg: colors.warningLight, fg: colors.warningText },
     danger: { bg: colors.dangerLight, fg: colors.danger },
-    info: { bg: '#E8F0FE', fg: colors.blue },
+    info: { bg: colors.infoLight, fg: colors.blue },
     brand: { bg: colors.primaryLight, fg: colors.primary },
   };
   const t = tones[tone];
@@ -767,7 +791,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    backgroundColor: '#EAF1FF',
+    backgroundColor: colors.infoLight,
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: radius.pill,

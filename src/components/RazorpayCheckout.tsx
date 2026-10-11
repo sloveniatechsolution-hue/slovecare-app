@@ -137,7 +137,7 @@ function buildCheckoutHtml(
         name: 'SloveCare',
         description: 'Booking payment',
         prefill: ${safeJson(prefill || {})},
-        theme: { color: '#0B2447' },
+        theme: { color: ${safeJson(colors.navy)} },
         handler: function (response) {
           post({
             type: 'success',

@@ -29,14 +29,19 @@ export function staffLabel(doctor: Doctor): string {
       return 'Home Nursing Care';
     case 'caretaker':
       return 'Elderly Caretaker';
+    case 'lab':
+      return doctor.labDetails?.labName
+        ? `${doctor.labDetails.labName} • Lab Care`
+        : 'Diagnostic Lab & Home Collection';
     default:
       return 'Medical Professional';
   }
 }
 
-/** Visit fee — pricing ke alag-alag shapes se ek number nikalta hai. */
+/** Visit fee — vendor ki khud set ki pricing (top-level `pricing`) pehle. */
 export function visitFee(doctor: Doctor): number {
   const pricing =
+    doctor.pricing ||
     doctor.doctorDetails?.pricing ||
     doctor.compounderDetails?.pricing ||
     doctor.nurseDetails?.pricing ||
@@ -48,14 +53,16 @@ export function visitFee(doctor: Doctor): number {
     pricing.perVisit ??
     pricing.baseVisitFee ??
     pricing.onlineConsultationFee ??
-    450
+    pricing.homeCollectionFee ??
+    0
   );
 }
 
 function qualification(doctor: Doctor): string {
   const details = doctor.doctorDetails || doctor.compounderDetails || doctor.nurseDetails || doctor.caretakerDetails;
-  const qual = details?.qualification || '';
-  const years = details?.experienceYears;
+  // Details sub-object pehle, warna vendor ka top-level qualification.
+  const qual = details?.qualification || doctor.qualification || '';
+  const years = details?.experienceYears ?? doctor.experienceYears;
   if (qual && years) {
     return `${qual} • ${years} yrs exp`;
   }
@@ -131,6 +138,17 @@ export function VerificationBadge({ doctor }: { doctor: Doctor }): React.JSX.Ele
   return <Badge label={badge.label} tone={badge.tone} icon={badge.icon} />;
 }
 
+/**
+ * Degree certificate team ne verify kar di — tabhi card pe "Degree Verified"
+ * badge dikhta hai. Pending/rejected ka koi badge nahi.
+ */
+export function DegreeVerifiedBadge({ doctor }: { doctor: Doctor }): React.JSX.Element | null {
+  if (doctor.degreeVerificationStatus !== 'verified') {
+    return null;
+  }
+  return <Badge label="Degree Verified" tone="success" icon="graduation-cap" />;
+}
+
 export function DoctorCard({ doctor, onPress, variant = 'grid' }: DoctorCardProps): React.JSX.Element {
   const horizontal = variant === 'row';
   const fee = visitFee(doctor);
@@ -154,10 +172,17 @@ export function DoctorCard({ doctor, onPress, variant = 'grid' }: DoctorCardProp
           <Text style={styles.initialsText}>{initialsOf(doctor.name) || '?'}</Text>
         </View>
       )}
-      <View style={styles.homeVisitTag}>
-        <Icon name="home" size={10} color={colors.textInverse} />
-        <Text style={styles.homeVisitText}>Home Visit</Text>
-      </View>
+      {doctor.type === 'lab' ? (
+        <View style={styles.homeVisitTag}>
+          <Icon name="flask" size={10} color={colors.textInverse} />
+          <Text style={styles.homeVisitText}>Home Collection</Text>
+        </View>
+      ) : (
+        <View style={styles.homeVisitTag}>
+          <Icon name="home" size={10} color={colors.textInverse} />
+          <Text style={styles.homeVisitText}>Home Visit</Text>
+        </View>
+      )}
     </View>
   );
 
@@ -183,6 +208,12 @@ export function DoctorCard({ doctor, onPress, variant = 'grid' }: DoctorCardProp
       <Text style={styles.qualification} numberOfLines={1}>
         {qualification(doctor)}
       </Text>
+      {/* Team ne degree verify ki hai tabhi dikhta hai */}
+      {doctor.degreeVerificationStatus === 'verified' ? (
+        <View style={styles.degreeBadgeWrap}>
+          <DegreeVerifiedBadge doctor={doctor} />
+        </View>
+      ) : null}
       <View style={styles.addressRow}>
         <Icon name="map-pin" size={11} color={colors.textMuted} />
         <Text style={styles.address} numberOfLines={1}>
@@ -203,8 +234,15 @@ export function DoctorCard({ doctor, onPress, variant = 'grid' }: DoctorCardProp
           <Text style={[styles.statusText, { color: status.color }]}>{status.text}</Text>
         </View>
         <Text style={styles.price}>
-          ₹{fee}
-          <Text style={[typography.caption, { color: colors.textMuted }]}> /visit</Text>
+          {/* Vendor khud daam set karta hai — na ho to "On request". */}
+          {fee > 0 ? (
+            <>
+              ₹{fee}
+              <Text style={[typography.caption, { color: colors.textMuted }]}> /visit</Text>
+            </>
+          ) : (
+            <Text style={[typography.caption, { color: colors.textMuted }]}>Fee on request</Text>
+          )}
         </Text>
       </View>
     </View>
@@ -266,6 +304,7 @@ const styles = StyleSheet.create({
   name: { ...typography.h4, fontSize: 15.5, lineHeight: 20, flexShrink: 1 },
   specialization: { ...typography.smallMedium, fontSize: 12.5, lineHeight: 17, color: colors.blue, marginTop: 3 },
   qualification: { ...typography.caption, marginTop: 3 },
+  degreeBadgeWrap: { alignSelf: 'flex-start', marginTop: 5 },
   addressRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   address: { ...typography.caption, flexShrink: 1 },
   distanceTag: {

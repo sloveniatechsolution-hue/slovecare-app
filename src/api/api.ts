@@ -119,6 +119,15 @@ export interface DoctorPricing {
   baseVisitFee?: number;
   perVisit?: number;
   perHour?: number;
+  halfDay?: number;
+  fullDay?: number;
+  injectionFee?: number;
+  dressingFee?: number;
+  bpSugarCheckFee?: number;
+  ivDripFee?: number;
+  homeCollectionFee?: number;
+  /** Vendor apni keys (Pricing screen se) yahan rakh sakta hai. */
+  [key: string]: number | undefined;
 }
 
 export interface DoctorServices {
@@ -134,6 +143,8 @@ export interface DoctorServices {
   patientCare?: boolean;
   nightCare?: boolean;
   dayCare?: boolean;
+  /** Vendor ke custom toggles (Pricing screen se). */
+  [key: string]: boolean | undefined;
 }
 
 export interface DoctorDetails {
@@ -173,6 +184,25 @@ export type VendorType =
   | 'ambulance'
   | string;
 
+export interface LabDetails {
+  labName?: string;
+  licenseNumber?: string;
+  certifications?: string[];
+  homeSampleCollectionAvailable?: boolean;
+  homeCollectionFee?: number;
+  labTimings?: { start?: string; end?: string };
+  workingDays?: string[];
+  services?: DoctorServices;
+  pricing?: DoctorPricing;
+  [key: string]: unknown;
+}
+
+/** Vendor khud set kiya hua custom service (naam + daam). */
+export interface ServicePrice {
+  name: string;
+  price: number;
+}
+
 export interface Vendor {
   id: string;
   type: VendorType;
@@ -193,10 +223,35 @@ export interface Vendor {
   rating?: number;
   reviewCount?: number;
   joinedDate?: string;
+
+  /* Vendor panel se aane wale fields (register + Pricing/Edit screens). */
+  specialization?: string;
+  qualification?: string;
+  registrationNumber?: string;
+  registrationAuthority?: string;
+  experienceYears?: number;
+  bio?: string;
+  workingDays?: string[];
+  workingHours?: { start?: string; end?: string };
+  pricing?: DoctorPricing;
+  services?: DoctorServices;
+  servicePrices?: ServicePrice[];
+
+  /**
+   * Degree certificate — optional at signup; vendor baad me upload karta hai.
+   * Team verify karti hai; verified hone par card/detail pe "Degree Verified"
+   * badge + degree dikhti hai. (Certificate ka image sirf team ko dikhta hai.)
+   */
+  degreeCertificate?: string;
+  degreeVerificationStatus?: 'none' | 'pending' | 'verified' | 'rejected' | string;
+  degreeVerificationNotes?: string;
+  degreeUploadedAt?: string;
+
   doctorDetails?: DoctorDetails;
   compounderDetails?: StaffDetails;
   nurseDetails?: StaffDetails;
   caretakerDetails?: StaffDetails;
+  labDetails?: LabDetails;
   calculatedDistance?: number | null;
   totalBookingsCount?: number;
   reviews?: Review[];
@@ -237,6 +292,8 @@ export interface Prescription {
   medicines?: { name?: string; dose?: string; timing?: string; duration?: string }[];
   advice?: string;
   followUpDate?: string;
+  /** Doctor ke upload kiye files (prescription image/PDF) — sirf aapke. */
+  files?: { title?: string; fileUrl: string }[];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -329,6 +386,17 @@ export interface BookingCustomer {
   distanceKm?: number;
 }
 
+export interface ReportFile {
+  id?: string;
+  title: string;
+  fileUrl: string;
+  fileType?: string;
+  reportType?: string;
+  notes?: string;
+  uploadedBy?: string;
+  uploadedAt?: string;
+}
+
 export interface Booking {
   id: string;
   vendorId: string;
@@ -342,15 +410,46 @@ export interface Booking {
   serviceName: string;
   serviceType: ServiceType;
   date: string;
+  /** Original slot — delay ke baad bhi yahi rehta hai. */
   timeSlot: string;
+  /**
+   * Display time — delay ke baad provider ise aage badha deta hai.
+   * Purani bookings me missing ho sakta hai → `bookingTime()` use karein.
+   */
+  time?: string;
   amount: number;
   status: BookingStatus;
   paymentStatus?: string;
   notes?: string;
+  address?: string;
+  symptoms?: string;
   medicalConditions?: string[];
   orderItems?: { name: string; qty: number; price?: number }[];
   sampleStatus?: string;
   prescription?: Prescription;
+  /** Doctor/lab ki upload ki hui patient files — sirf ye booking ke liye. */
+  reportFiles?: ReportFile[];
+  /** Delay feature — vendor panel se slot thoda aage badhta hai. */
+  isDelayed?: boolean;
+  delayMinutes?: number;
+  originalTime?: string;
+  delayedAt?: string;
+}
+
+/**
+ * Booking ka display time — delay ke baad `time` naya hota hai, warna
+ * `timeSlot` (purani bookings) dikhana sahi hai.
+ */
+export function bookingTime(booking: Pick<Booking, 'time' | 'timeSlot'>): string {
+  return booking.time || booking.timeSlot || '';
+}
+
+/**
+ * Online consultation room — vendor panel isi formula se meeting start
+ * karta hai; customer isi link par "Join Consultation" se aata hai.
+ */
+export function meetingLinkFor(booking: Pick<Booking, 'id'>): string {
+  return `https://meet.jit.si/SloveCare-${encodeURIComponent(booking.id)}`;
 }
 
 export interface CreateBookingPayload {
@@ -566,6 +665,10 @@ export interface UserDashboard {
     date?: string;
     status: 'ready' | 'processing' | string;
     sampleStatus?: string;
+    /** Provider ki upload ki hui asli file (jab available ho). */
+    fileUrl?: string;
+    fileType?: string;
+    notes?: string;
     downloadUrl?: string;
   }[];
 }
@@ -852,7 +955,19 @@ export const api = {
   /* -------------------------------- AUTH --------------------------------- */
   auth: {
     /** POST /api/v1/auth/user/register */
-    register(input: { name: string; email?: string; phone?: string; password?: string }) {
+    register(input: {
+      name: string;
+      email?: string;
+      phone?: string;
+      password?: string;
+      /* Professional (doctor/lab) registration ke extra fields */
+      degree?: string;
+      selectedType?: string;
+      regNumber?: string;
+      regAuthority?: string;
+      qualification?: string;
+      labName?: string;
+    }) {
       return request<AuthResult>('/auth/user/register', {
         method: 'POST',
         body: input,

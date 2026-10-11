@@ -25,7 +25,10 @@ import Icon from '../components/Icon';
 import CatIcon from '../components/CatIcon';
 import { Screen } from '../components/UI';
 import api from '../api/api';
+
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+
+import { useThemePreference } from '../theme/ThemeContext';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -59,6 +62,7 @@ function renderRich(text: string, keyPrefix: string): React.ReactNode[] {
 }
 
 export default function AIScreen(): React.JSX.Element {
+  useThemePreference();
   const insets = useSafeAreaInsets();
 
   const [messages, setMessages] = useState<Message[]>([GREETING]);

@@ -23,7 +23,10 @@ import { AppButton, Chip, EmptyState, ErrorState, Loader, Screen } from '../comp
 import api, { Doctor, VendorType } from '../api/api';
 import { locationHelpAlert, requestFreshLocation, requestLocation, reverseGeocode } from '../utils/location';
 import { RootStackParamList, StaffType, TabParamList } from '../navigation/types';
+
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type DoctorsRoute = RouteProp<TabParamList, 'Doctors'>;
@@ -31,13 +34,34 @@ type DoctorsRoute = RouteProp<TabParamList, 'Doctors'>;
 const SPECIALTIES = [
   'All',
   'General Physician',
-  'Pediatrician',
   'Cardiologist',
-  'Physiotherapist',
+  'Dermatologist',
+  'Pediatrician',
+  'Gynecologist',
+  'Orthopedic',
+  'ENT Specialist',
+  'Ophthalmologist',
+  'Dentist',
+  'Neurologist',
+  'Psychiatrist',
   'Psychologist',
+  'Urologist',
+  'Gastroenterologist',
+  'Pulmonologist',
+  'Endocrinologist',
+  'Nephrologist',
+  'Oncologist',
+  'Physiotherapist',
+  'Chiropractor',
+  'Dietitian / Nutritionist',
+  'Speech Therapist',
+  'Occupational Therapist',
+  'Ayurveda',
+  'Homeopathy',
   'Compounders',
   'Nurses',
   'Care Takers',
+  'Lab Care',
 ];
 
 const DISTANCES = [
@@ -63,6 +87,8 @@ function staffQuery(chip: string): { type?: VendorType; specialty?: string } {
       return { type: 'nurse' };
     case 'Care Takers':
       return { type: 'caretaker' };
+    case 'Lab Care':
+      return { type: 'lab' };
     default:
       return { specialty: chip };
   }
@@ -79,12 +105,15 @@ function chipForType(type?: StaffType): string {
       return 'Nurses';
     case 'caretaker':
       return 'Care Takers';
+    case 'lab':
+      return 'Lab Care';
     default:
       return 'All';
   }
 }
 
 export default function DoctorsScreen(): React.JSX.Element {
+  useThemePreference();
   const navigation = useNavigation<Nav>();
   const route = useRoute<DoctorsRoute>();
   const insets = useSafeAreaInsets();

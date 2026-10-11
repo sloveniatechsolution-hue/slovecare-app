@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,6 +17,7 @@ import api, { UserDashboard } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from '../navigation/types';
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -26,6 +27,7 @@ export default function ProfileScreen(): React.JSX.Element {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { user, logout, isLoggedIn, updateUser } = useAuth();
+  const { dark, setPreference } = useThemePreference();
 
   const [dashboard, setDashboard] = useState<UserDashboard | null>(null);
 
@@ -242,7 +244,28 @@ export default function ProfileScreen(): React.JSX.Element {
           </Card>
         </View>
 
-        {/* App info */}
+        {/* Appearance — ek hi toggle: on = dark screen, off = light */}
+        <View style={{ marginTop: spacing.xl }}>
+          <Card>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+              <View style={{ flex: 1 }}>
+                <Text style={typography.h4}>Dark Mode</Text>
+                <Text style={[typography.small, { marginTop: 2 }]}>
+                  {dark ? 'On — screen dark theme me hai' : 'Off — screen light theme me hai'}
+                </Text>
+              </View>
+              <Switch
+                value={dark}
+                onValueChange={value => setPreference(value ? 'dark' : 'light')}
+                trackColor={{ true: colors.blue, false: colors.borderStrong }}
+                thumbColor="#FFFFFF"
+                ios_backgroundColor={colors.borderStrong}
+                accessibilityLabel="Dark mode"
+              />
+            </View>
+          </Card>
+        </View>
+
         <View style={{ marginTop: spacing.xl }}>
           <Card>
             <View style={{ alignItems: 'center', gap: 6 }}>

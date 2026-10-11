@@ -5,6 +5,7 @@
 
 import React from 'react';
 import Svg, { Circle, Line, Path, Polygon, Polyline, Rect } from 'react-native-svg';
+import { colors } from '../theme/theme';
 
 export type IconName =
   | 'home'
@@ -63,6 +64,10 @@ export type IconName =
   | 'message-circle'
   | 'zap'
   | 'rupee'
+  | 'graduation-cap'
+  | 'id'
+  | 'tablet'
+  | 'upload'
   /* 2026 additions — AI tab, chat aur map ke liye */
   | 'sparkles'
   | 'send'
@@ -391,6 +396,35 @@ const ICONS: Record<IconName, React.ReactNode> = {
       <Path d="M5 4h13M5 8h13M6 4c5 0 8 1.2 8 4s-3 4-8 4h-1l9 8" />
     </>
   ),
+  'graduation-cap': (
+    <>
+      <Path d="M22 9.5 12 4 2 9.5l10 5.5 10-5.5z" />
+      <Path d="M6 11.5V16c0 1.7 2.7 3 6 3s6-1.3 6-3v-4.5" />
+      <Path d="M22 9.5V15" />
+    </>
+  ),
+  id: (
+    <>
+      <Rect x={2} y={5} width={20} height={14} rx={2} />
+      <Circle cx={8.5} cy={11} r={2} />
+      <Path d="M5 16.5c.6-1.6 2-2.5 3.5-2.5s2.9.9 3.5 2.5" />
+      <Line x1={14.5} y1={9.5} x2={19} y2={9.5} />
+      <Line x1={14.5} y1={13} x2={19} y2={13} />
+    </>
+  ),
+  tablet: (
+    <>
+      <Rect x={4} y={2} width={16} height={20} rx={2.5} />
+      <Line x1={11} y1={19} x2={11.01} y2={19} />
+    </>
+  ),
+  upload: (
+    <>
+      <Path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <Polyline points="17 8 12 3 7 8" />
+      <Line x1={12} y1={3} x2={12} y2={15} />
+    </>
+  ),
   sparkles: (
     <>
       <Path d="M12 3l1.9 4.7 4.7 1.8-4.7 1.8L12 16l-1.9-4.7L5.4 9.5l4.7-1.8L12 3z" />
@@ -430,7 +464,7 @@ const ICONS: Record<IconName, React.ReactNode> = {
   ),
 };
 
-export function Icon({ name, size = 20, color = '#0F1E33', strokeWidth = 2 }: IconProps): React.JSX.Element {
+export function Icon({ name, size = 20, color = colors.text, strokeWidth = 2 }: IconProps): React.JSX.Element {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
       {ICONS[name]}

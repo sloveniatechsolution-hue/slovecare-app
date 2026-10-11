@@ -49,7 +49,10 @@ import api, {
   PrescriptionOcrResult,
 } from '../api/api';
 import { RootStackParamList } from '../navigation/types';
+
 import { colors, radius, spacing, typography } from '../theme/theme';
+
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PrescriptionReader'>;
 
@@ -164,6 +167,7 @@ const confidenceTone = (confidence: MedicineConfidence): 'success' | 'warning' |
 /* -------------------------------------------------------------------------- */
 
 export default function PrescriptionReaderScreen({ navigation }: Props): React.JSX.Element {
+  useThemePreference();
   const insets = useSafeAreaInsets();
 
   const [image, setImage] = useState<SelectedImage | null>(null);
@@ -564,7 +568,7 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
 
                           {uncertain ? (
                             <View style={styles.uncertainBox}>
-                              <Icon name="alert-triangle" size={15} color="#B45309" />
+                              <Icon name="alert-triangle" size={15} color={colors.warningText} />
                               <Text style={styles.uncertainText}>{uncertain}</Text>
                             </View>
                           ) : null}
@@ -635,7 +639,7 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
         {result ? (
           <View style={styles.disclaimer}>
             <View style={styles.disclaimerHead}>
-              <Icon name="shield-check" size={16} color={colors.navy} />
+              <Icon name="shield-check" size={16} color={colors.primary} />
               <Text style={styles.disclaimerTitle}>Medical Disclaimer</Text>
             </View>
             <Text style={styles.disclaimerText}>{result.disclaimer}</Text>
