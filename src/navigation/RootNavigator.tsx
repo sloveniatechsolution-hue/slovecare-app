@@ -15,7 +15,12 @@ import EmergencyScreen from '../screens/EmergencyScreen';
 import LabReportsScreen from '../screens/LabReportsScreen';
 import ServicesScreen from '../screens/ServicesScreen';
 import PrescriptionReaderScreen from '../screens/PrescriptionReaderScreen';
-import ConsultationScreen from '../screens/ConsultationScreen';
+import DietPlannerScreen from '../screens/DietPlannerScreen';
+import DietPlanResultScreen from '../screens/DietPlanResultScreen';
+import ConsultationBookScreen from '../screens/ConsultationBookScreen';
+import MyConsultationsScreen from '../screens/MyConsultationsScreen';
+import VideoCallScreen from '../screens/VideoCallScreen';
+import ChatRoomScreen from '../screens/ChatRoomScreen';
 import TabNavigator from './TabNavigator';
 import { RootStackParamList } from './types';
 import { colors } from '../theme/theme';
@@ -51,7 +56,12 @@ export default function RootNavigator(): React.JSX.Element {
         <Stack.Screen name="LabReports" component={LabReportsScreen} />
         <Stack.Screen name="Services" component={ServicesScreen} />
         <Stack.Screen name="PrescriptionReader" component={PrescriptionReaderScreen} />
-        <Stack.Screen name="Consultation" component={ConsultationScreen} />
+        <Stack.Screen name="DietPlanner" component={DietPlannerScreen} />
+        <Stack.Screen name="DietPlanResult" component={DietPlanResultScreen} />
+        <Stack.Screen name="ConsultationBook" component={ConsultationBookScreen} />
+        <Stack.Screen name="MyConsultations" component={MyConsultationsScreen} />
+        <Stack.Screen name="VideoCall" component={VideoCallScreen} options={{ animation: 'fade' }} />
+        <Stack.Screen name="ChatRoom" component={ChatRoomScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

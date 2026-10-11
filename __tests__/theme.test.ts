@@ -58,7 +58,7 @@ test('module-level styles theme switch follow karti hain', () => {
   /* Surfaces ink ban jaate hain */
   expect(styles.surface.backgroundColor).toBe('#0F1725');
   expect(styles.surface.borderColor).toBe('#1E2A3C');
-  expect(styles.surface.color).toBe('#A3B3C9');
+  expect(styles.surface.color).toBe('#C3D2E6');
   /* Hero ka ink base dark hi rehta hai, white text white hi rehta hai */
   expect(styles.hero.backgroundColor).toBe('#060D18');
   expect(styles.hero.color).toBe('#FFFFFF');

@@ -12,6 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -24,8 +25,9 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppHeader from '../components/AppHeader';
 import Icon, { IconName } from '../components/Icon';
-import { staffLabel, visitFee } from '../components/DoctorCard';
+import { staffLabel, visitFee, photoUrl, initialsOf } from '../components/DoctorCard';
 import RazorpayCheckout from '../components/RazorpayCheckout';
+import BookingSuccessModal, { BookingSuccessInfo } from '../components/BookingSuccessModal';
 import { AppButton, Badge, Card, ErrorState, Loader, Screen, SectionHeader, TextField } from '../components/UI';
 import api, {
   ApiError,
@@ -94,6 +96,9 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
   /** Last signature (ref — Alert callbacks me stale closure na ho). */
   const pendingVerifyRef = useRef<(PaymentSignature & { bookingId: string }) | null>(null);
 
+  /* Booking confirm hone par premium success card (native Alert ki jagah). */
+  const [success, setSuccess] = useState<BookingSuccessInfo | null>(null);
+
   /* patient details */
   const [patientName, setPatientName] = useState(user?.name ?? '');
   const [patientPhone, setPatientPhone] = useState(user?.phone ?? '');
@@ -121,7 +126,7 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
           : '';
 
       const [detail, avail] = await Promise.all([
-        isDoctorMode && targetId ? api.vendors.byId(targetId) : Promise.resolve(null),
+        targetId ? api.vendors.byId(targetId) : Promise.resolve(null),
         targetId
           ? api.vendors.availability(targetId, 14).catch(() => null)
           : Promise.resolve(null),
@@ -130,7 +135,7 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
       setVendor(detail);
       setAvailability(avail);
       if (targetId && !avail) {
-        setError('Slots load nahi hue. Neeche Retry dabakar dobara koshish karein.');
+        setError('Could not load slots. Tap Retry below to try again.');
       }
 
       /* Pehla jis din khali slot ho wahi date select (aaj nahi to kal/agle). */
@@ -248,6 +253,17 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
       return;
     }
 
+    /* Booking ke liye logged-in account zaroori hai — backend customer
+       identity aur booking ownership dono token se hi banata hai. Guest par
+       raw "Bearer token missing" error aata tha, isliye pehle login maango. */
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in to confirm your booking.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign In', onPress: () => navigation.navigate('Auth') },
+      ]);
+      return;
+    }
+
     setSubmitting(true);
     try {
       if (isMedicineMode) {
@@ -332,14 +348,44 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
 
   /* --------------------------- payment helpers --------------------------- */
 
-  const bookingConfirmed = () => {
-    Alert.alert(
-      'Payment Verified ✅',
-      isLabMode
+  /**
+   * Booking confirm — native Alert ki jagah premium "booking pass" card.
+   * `bookingId` payment-verify wale path se aata hai (free booking par undefined).
+   */
+  const bookingConfirmed = (bookingId?: string) => {
+    const providerName = isDoctorMode
+      ? vendor
+        ? `${vendor.name} • ${staffLabel(vendor)}`
+        : 'Doctor appointment'
+      : isLabMode
+        ? 'Diagnostic lab • home sample pickup'
+        : 'Delivered to your address';
+
+    const serviceIcon: IconName = isLabMode
+      ? 'flask'
+      : isMedicineMode
+        ? 'pill'
+        : consultationType === 'Online Consultation'
+          ? 'video'
+          : consultationType === 'Clinic Visit'
+            ? 'building'
+            : 'home';
+
+    setSuccess({
+      serviceName,
+      providerName,
+      serviceIcon,
+      serviceTypeLabel: isLabMode ? 'Home Sample Collection' : consultationType,
+      patientName: patientName.trim(),
+      patientPhone: patientPhone.trim(),
+      date: selectedDay,
+      timeSlot: selectedSlot ?? '',
+      amount,
+      bookingId,
+      message: isLabMode
         ? 'Your payment was received and your home sample collection is scheduled. Track it under Appointments.'
         : 'Your payment was received and your appointment is confirmed. You can track it under Appointments.',
-      [{ text: 'View Appointments', onPress: () => navigation.replace('Appointments') }],
-    );
+    });
   };
 
   /**
@@ -354,7 +400,7 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
       await api.payments.verify(signature);
       pendingVerifyRef.current = null;
       setCheckout(null);
-      bookingConfirmed();
+      bookingConfirmed(signature.bookingId);
     } catch (e) {
       const err = e as ApiError;
       // Razorpay par payment ho chuka — ab sirf confirm baaki hai.
@@ -383,7 +429,7 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
     try {
       await api.payments.verify(payload);
       pendingVerifyRef.current = null;
-      bookingConfirmed();
+      bookingConfirmed(payload.bookingId);
     } catch (e) {
       const err = e as ApiError;
       Alert.alert('Still not confirmed', err.message || 'We could not confirm your payment.', [
@@ -449,11 +495,25 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
           <Card>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
               <View style={styles.summaryIcon}>
-                <Icon
-                  name={isLabMode ? 'flask' : isMedicineMode ? 'pill' : 'stethoscope'}
-                  size={22}
-                  color={colors.primary}
-                />
+                {(() => {
+                  /* Lab mode: pehle LabTest ka embedded avatar try karo (turant),
+                     phir vendor detail ka — dono me se jo mile wo dikhao. */
+                  const testAvatar = isLabMode && params.mode === 'lab' ? params.test.vendorAvatar : undefined;
+                  const vendorAvatar = vendor?.avatar ?? testAvatar;
+                  const photo = vendorAvatar ? photoUrl(vendorAvatar) : undefined;
+                  if (photo) {
+                    return (
+                      <Image source={{ uri: photo }} style={styles.summaryPhoto} resizeMode="cover" />
+                    );
+                  }
+                  return (
+                    <Icon
+                      name={isLabMode ? 'flask' : isMedicineMode ? 'pill' : 'stethoscope'}
+                      size={22}
+                      color={colors.primary}
+                    />
+                  );
+                })()}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={typography.h4} numberOfLines={1}>
@@ -553,17 +613,17 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
           <View style={{ marginTop: spacing.xl }}>
             <SectionHeader
               title="Available slots"
-              subtitle="Sirf khali slots dikhte hain — booked automatic hide ho jaate hain"
+              subtitle="Only open slots are shown — booked times are hidden automatically"
             />
             {availableSlots.length === 0 ? (
               <View style={styles.slotEmpty}>
                 <Icon name="calendar" size={16} color={colors.textMuted} />
                 <Text style={[typography.caption, { flex: 1, textAlign: 'center' }]}>
                   {viewDays.length === 0
-                    ? 'Provider ki availability abhi set nahi hai — thodi der baad dobara dekhiye.'
+                    ? 'This provider has not set availability yet — please check back later.'
                     : viewDays.find(d => d.key === selectedDay)?.working === false
-                      ? 'Is din provider kaam nahi karta — dusri date chuniye.'
-                      : 'Is din ke saare slots bhar chuke hain — dusri date chuniye.'}
+                      ? 'This provider does not work on this day — please choose another date.'
+                      : 'All slots for this day are fully booked — please choose another date.'}
                 </Text>
               </View>
             ) : (
@@ -685,6 +745,21 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
           />
         ) : null}
       </KeyboardAvoidingView>
+
+      {/* Booking confirm — premium success card (payment verify ke baad) */}
+      <BookingSuccessModal
+        visible={success !== null}
+        info={success}
+        primaryLabel="View Appointments"
+        onPrimary={() => {
+          setSuccess(null);
+          navigation.replace('Appointments');
+        }}
+        onSecondary={() => {
+          setSuccess(null);
+          navigation.navigate('Main');
+        }}
+      />
     </Screen>
   );
 }
@@ -698,7 +773,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  summaryPhoto: { width: '100%', height: '100%' },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',

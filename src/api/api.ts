@@ -11,6 +11,11 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type {
+  ChatSessionInfo,
+  ConsultationMessage,
+  ConsultationRtcConfig,
+} from '../consultation/types';
 
 /* -------------------------------------------------------------------------- */
 /*  1. CONFIG                                                                  */
@@ -53,6 +58,9 @@ const AI_CHAT_PATH = '/api/v1/ai/chat';
 /** Prescription Reader paths — envelope responses (ApiResponse shape). */
 const PRESCRIPTION_OCR_PATH = '/api/v1/prescription/ocr';
 const PRESCRIPTION_ANALYZE_PATH = '/api/v1/prescription/analyze';
+
+/** AI Weekly Diet Planner path — envelope responses, auth required. */
+const DIET_PLANS_PATH = '/api/v1/diet-plans';
 
 const REQUEST_TIMEOUT_MS = 20000;
 const TOKEN_STORAGE_KEY = 'slovecare_user_token';
@@ -373,6 +381,134 @@ export interface PrescriptionAnalysisResult {
   source?: string;
 }
 
+/* -------------------------------------------------------------------------- */
+/*  AI Weekly Diet Planner                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** Ek meal ka ingredient (naam + quantity). */
+export interface DietMealItem {
+  name: string;
+  quantity: string;
+}
+
+/** Ek din ka meal card. */
+export interface DietMeal {
+  key: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  name: string;
+  time: string;
+  items: DietMealItem[];
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  instructions: string;
+  alternatives: string[];
+}
+
+export interface DietDayTotals {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+}
+
+/** Din ka pura data (7 din ke plans me). */
+export interface DietDay {
+  date: string; // YYYY-MM-DD
+  weekday: string;
+  meals: DietMeal[];
+  totals: DietDayTotals;
+}
+
+export interface DietGroceryCategory {
+  category: string;
+  items: DietMealItem[];
+}
+
+/** Gemini plan ka validated payload. Nutrition values = estimates. */
+export interface DietPlanData {
+  overview: string;
+  reasoning: string;
+  hydration: string;
+  prep_tips: string[];
+  warnings: string[];
+  days: DietDay[];
+  grocery: DietGroceryCategory[];
+}
+
+/** Form ke saare jawab — plan ke saath snapshot ki tarah save hote hain. */
+export interface DietPlanPreferences {
+  age: number | null;
+  sex: string;
+  heightCm: number | null;
+  weightKg: number | null;
+  goalWeightKg: number | null;
+  country: string;
+  state: string;
+  city: string;
+  activityLevel: string;
+  goal: string;
+  medicalConditions: string[];
+  allergies: string[];
+  dietaryRestrictions: string[];
+  medications: string;
+  pregnancyStatus: string;
+  exerciseRoutine: string;
+  sleepSchedule: string;
+  dailyRoutine: string;
+  dietType: string;
+  dietTypeOther: string;
+  cuisine: string;
+  favoriteFoods: string[];
+  dislikedFoods: string[];
+  mealsPerDay: number;
+  mealTimings: string;
+  budget: string;
+  cookingPreference: string;
+  restrictionsNotes: string;
+}
+
+/** List screen ke liye light summary. */
+export interface DietPlanSummary {
+  goal?: string;
+  dietType?: string;
+  cuisine?: string;
+  age?: number;
+  avgCalories?: number;
+  days?: number;
+}
+
+/** Save kiya gaya plan — history me har version alag document. */
+export interface DietPlan {
+  id: string;
+  userId?: string;
+  weekStart: string; // YYYY-MM-DD (Monday)
+  weekEnd: string; // YYYY-MM-DD
+  status: 'active' | 'superseded' | string;
+  version: number;
+  summary: DietPlanSummary;
+  preferences: DietPlanPreferences;
+  plan: DietPlanData;
+  completion: Record<string, boolean>;
+  disclaimer?: string;
+  createdAt?: string;
+  /** Same preferences se abhi bana plan reuse hua (duplicate-tap guard). */
+  reused?: boolean;
+}
+
+/** History list item (plan payload ke bina — halka). */
+export interface DietPlanListItem {
+  id: string;
+  weekStart: string;
+  weekEnd: string;
+  status: 'active' | 'superseded' | string;
+  version: number;
+  summary: DietPlanSummary;
+  createdAt?: string;
+}
+
 export interface BookingCustomer {
   id?: string;
   name: string;
@@ -434,6 +570,16 @@ export interface Booking {
   delayMinutes?: number;
   originalTime?: string;
   delayedAt?: string;
+  /* ---------------------- consultation fields (video/chat) ---------------- */
+  /** 'video' | 'chat' — naye consultation bookings par backend set karta hai. */
+  consultationMode?: 'video' | 'chat';
+  /** Session duration (minutes) — video call ya paid chat window. */
+  durationMinutes?: number;
+  /** Authorized room/session reference (server-generated). */
+  roomRef?: string;
+  /** Chat session window (server-generated) — start/expiry yahi se aati hai. */
+  sessionStartsAt?: string;
+  sessionExpiresAt?: string;
 }
 
 /**
@@ -442,14 +588,6 @@ export interface Booking {
  */
 export function bookingTime(booking: Pick<Booking, 'time' | 'timeSlot'>): string {
   return booking.time || booking.timeSlot || '';
-}
-
-/**
- * Online consultation room — vendor panel isi formula se meeting start
- * karta hai; customer isi link par "Join Consultation" se aata hai.
- */
-export function meetingLinkFor(booking: Pick<Booking, 'id'>): string {
-  return `https://meet.jit.si/SloveCare-${encodeURIComponent(booking.id)}`;
 }
 
 export interface CreateBookingPayload {
@@ -473,6 +611,10 @@ export interface CreateBookingPayload {
   sampleStatus?: string;
   /** Lab mode: server price isi LabTest record se verify karta hai. */
   testId?: string;
+  /** Video/Chat consultation: duration server isi se session window set karta hai. */
+  durationMinutes?: number;
+  /** 'video' | 'chat' — consultation bookings ke liye (backend room/session bhi isi se). */
+  consultationMode?: 'video' | 'chat';
 }
 
 /** POST /payments/create-order ka jawab — server decide karta hai pay hoga ya nahi. */
@@ -513,7 +655,11 @@ export interface LabTest {
   homeCollectionAvailable?: boolean;
   preparationInstructions?: string;
   turnaroundTime?: string;
+  image?: string;
   isActive?: boolean;
+  /** Vendor ki profile photo — backend join karke deta hai, bina extra API call ke. */
+  vendorAvatar?: string;
+  vendorName?: string;
 }
 
 export interface Medicine {
@@ -548,6 +694,7 @@ export interface HealthcareService {
 export interface Review {
   id: string;
   vendorId: string;
+  customerId?: string;
   customerName?: string;
   customerAvatar?: string;
   rating: number;
@@ -555,6 +702,20 @@ export interface Review {
   serviceName?: string;
   comment: string;
   reply?: { text: string; repliedAt?: string };
+  /**
+   * Approval flow — patient ke submit karte hi 'pending'; provider ke accept
+   * karne par hi ye review public profile par dikhta hai.
+   */
+  status?: 'pending' | 'approved' | 'rejected';
+}
+
+/** GET /reviews/eligible/:vendorId — patient review de sakta hai ya nahi. */
+export interface ReviewEligibility {
+  eligible: boolean;
+  hasCompletedBooking: boolean;
+  completedBookingId?: string | null;
+  /** Patient ka pehle se submit kiya review (pending/approved), agar ho. */
+  myReview?: Review | null;
 }
 
 export interface VendorSlot {
@@ -947,6 +1108,76 @@ async function prescriptionRequest<T>(
   );
 }
 
+/**
+ * Diet Plan ke liye host-failover request — Gemini plan generation lamba
+ * hota hai, isliye apni badi timeout. Privacy: preferences/health data
+ * kabhi log nahi hota (sirf path + error name).
+ */
+async function dietRequest<T>(
+  path: string,
+  options: { method?: HttpMethod; body?: unknown; timeoutMs: number; timeoutMessage: string },
+): Promise<T> {
+  if (!authToken) {
+    await initAuthToken();
+  }
+  const { method = 'GET', body, timeoutMs, timeoutMessage } = options;
+
+  let lastFailure: unknown = null;
+  for (let i = 0; i < API_HOSTS.length; i += 1) {
+    const hostIndex = (activeHostIndex + i) % API_HOSTS.length;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (body !== undefined) {
+        headers['Content-Type'] = 'application/json';
+      }
+      if (authToken) {
+        headers.Authorization = `Bearer ${authToken}`;
+      }
+      const res = await fetch(`${API_HOSTS[hostIndex]}${DIET_PLANS_PATH}${path}`, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+      activeHostIndex = hostIndex;
+
+      let json: ApiEnvelope<T> | null = null;
+      try {
+        json = (await res.json()) as ApiEnvelope<T>;
+      } catch {
+        json = null;
+      }
+
+      if (!res.ok || !json || json.success === false) {
+        throw new ApiError(
+          json?.message ||
+            (!res.ok
+              ? `Diet plan service error (${res.status}). Please try again.`
+              : 'The diet plan service returned an unexpected response. Please try again.'),
+          json?.statusCode || res.status,
+        );
+      }
+      return json.data;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error; // server jawab de chuka hai — doosre host ki zaroorat nahi
+      }
+      lastFailure = error;
+      console.warn(`[api] ${API_HOSTS[hostIndex]}${DIET_PLANS_PATH}${path} unreachable:`, (error as Error)?.name);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  const aborted = (lastFailure as Error)?.name === 'AbortError';
+  throw new ApiError(
+    aborted ? timeoutMessage : 'Unable to reach SloveCare server. Please check your internet and try again.',
+    0,
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /*  4. API — SAB KUCH EK HI FILE ME                                            */
 /* -------------------------------------------------------------------------- */
@@ -1122,7 +1353,9 @@ export const api = {
       return request<Booking>('/bookings', { method: 'POST', body: payload });
     },
 
-    /** GET /api/v1/bookings?userId=&status=&serviceType= */
+    /** GET /api/v1/bookings?userId=&status=&serviceType=
+     * Auth ZAROORI — backend protect() ke peeche hai aur token se hi scope
+     * (patient = apni bookings, vendor = apni) tay hota hai. */
     list(query: BookingQuery = {}) {
       return request<Booking[]>('/bookings', {
         query: {
@@ -1131,13 +1364,12 @@ export const api = {
           serviceType: query.serviceType,
           vendorId: query.vendorId,
         },
-        auth: false,
       });
     },
 
-    /** GET /api/v1/bookings/:id */
+    /** GET /api/v1/bookings/:id — token owner hi booking dekh sakta hai. */
     byId(id: string) {
-      return request<Booking>(`/bookings/${id}`, { auth: false });
+      return request<Booking>(`/bookings/${id}`);
     },
 
     /** PATCH /api/v1/bookings/:id/status */
@@ -1180,6 +1412,34 @@ export const api = {
       return request<PaymentVerifyResult>('/payments/verify', {
         method: 'POST',
         body: input,
+      });
+    },
+  },
+
+  /* ------------------------------ CONSULTATIONS --------------------------- */
+  /**
+   * Video calling + live chat ke backend endpoints.
+   * Auth: Bearer token (patient) — server booking ownership verify karta hai.
+   * Socket events: src/consultation/* (contract docs/consultations/BACKEND_SPEC.md).
+   */
+  consultations: {
+    /**
+     * GET /consultations/rtc-config — STUN/TURN servers + temporary TURN
+     * credentials. SECRET TURN credentials app me kabhi nahi aate.
+     */
+    rtcConfig() {
+      return request<ConsultationRtcConfig>('/consultations/rtc-config');
+    },
+
+    /** GET /consultations/:bookingId — session status, expiry, peer info. */
+    session(bookingId: string) {
+      return request<ChatSessionInfo>(`/consultations/${bookingId}`);
+    },
+
+    /** GET /consultations/:bookingId/messages?before=&limit= — paginated history. */
+    messages(bookingId: string, query: { before?: string; limit?: number } = {}) {
+      return request<ConsultationMessage[]>(`/consultations/${bookingId}/messages`, {
+        query: { before: query.before, limit: query.limit },
       });
     },
   },
@@ -1341,16 +1601,31 @@ export const api = {
 
   /* -------------------------------- REVIEWS ------------------------------ */
   reviews: {
-    /** POST /api/v1/reviews */
+    /**
+     * POST /api/v1/reviews — patient ka review. Backend par ye 'pending'
+     * banta hai; provider accept karega tabhi wo profile par public hoga.
+     * Sirf completed booking wale patient ye kar sakte hain.
+     */
     add(payload: {
       vendorId: string;
       rating: number;
       comment: string;
+      bookingId?: string;
       customerName?: string;
       customerAvatar?: string;
       serviceName?: string;
     }) {
       return request<Review>('/reviews', { method: 'POST', body: payload });
+    },
+
+    /** GET /api/v1/reviews/mine — logged-in patient ke apne diye reviews. */
+    mine() {
+      return request<Review[]>('/reviews/mine');
+    },
+
+    /** GET /api/v1/reviews/eligible/:vendorId — review ka permission + mera review. */
+    eligibility(vendorId: string) {
+      return request<ReviewEligibility>(`/reviews/eligible/${vendorId}`);
     },
   },
 
@@ -1421,6 +1696,84 @@ export const api = {
         50000,
         'The AI analysis took too long. Please try again.',
       );
+    },
+  },
+
+  /* --------------------------- AI WEEKLY DIET PLANNER -------------------- */
+  /**
+   * Diet Planner — preferences → backend (existing Gemini integration) →
+   * validated 7-day plan. Har plan Mongo me alag document hai (history);
+   * duplicate taps backend par reuse se bachte hain.
+   */
+  dietPlans: {
+    /** POST /diet-plans/generate — Gemini se naya 7-day plan banwao. */
+    generate(preferences: DietPlanPreferences, weekStart?: string): Promise<DietPlan> {
+      return dietRequest<DietPlan>('/generate', {
+        method: 'POST',
+        body: {
+          preferences,
+          weekStart,
+          /* Client timezone — backend usi se "is hafte ka Monday" nikaalta hai. */
+          offsetMinutes: -new Date().getTimezoneOffset(),
+        },
+        timeoutMs: 90000, // Gemini plan lamba hota hai — server ~60s me jawab deta hai
+        timeoutMessage: 'Building your diet plan took too long. Please try again.',
+      });
+    },
+
+    /** GET /diet-plans — user ki plan history (light list, newest first). */
+    list(): Promise<DietPlanListItem[]> {
+      return dietRequest<DietPlanListItem[]>('', {
+        timeoutMs: 25000,
+        timeoutMessage: 'Loading your diet plans took too long. Please try again.',
+      });
+    },
+
+    /** GET /diet-plans/preferences — saved snapshot (form prefill). */
+    getPreferences(): Promise<{ preferences: DietPlanPreferences | null }> {
+      return dietRequest<{ preferences: DietPlanPreferences | null }>('/preferences', {
+        timeoutMs: 20000,
+        timeoutMessage: 'Loading your saved preferences took too long.',
+      });
+    },
+
+    /** PUT /diet-plans/preferences — snapshot save/update. */
+    savePreferences(preferences: DietPlanPreferences): Promise<{ preferences: DietPlanPreferences }> {
+      return dietRequest<{ preferences: DietPlanPreferences }>('/preferences', {
+        method: 'PUT',
+        body: { preferences },
+        timeoutMs: 20000,
+        timeoutMessage: 'Saving your preferences took too long. Please try again.',
+      });
+    },
+
+    /** GET /diet-plans/:id — poora plan (sirf apna). */
+    byId(id: string): Promise<DietPlan> {
+      return dietRequest<DietPlan>(`/${encodeURIComponent(id)}`, {
+        timeoutMs: 25000,
+        timeoutMessage: 'Loading this diet plan took too long. Please try again.',
+      });
+    },
+
+    /** PATCH /diet-plans/:id/completion — meal checkbox persist. */
+    complete(
+      planId: string,
+      key: string,
+      done: boolean,
+    ): Promise<{ key: string; done: boolean; completion: Record<string, boolean> }> {
+      return dietRequest<{ key: string; done: boolean; completion: Record<string, boolean> }>(
+        `/${encodeURIComponent(planId)}/completion`,
+        { method: 'PATCH', body: { key, done }, timeoutMs: 20000, timeoutMessage: 'Could not save your meal progress.' },
+      );
+    },
+
+    /** DELETE /diet-plans/:id — apna plan delete. */
+    remove(id: string): Promise<{ deleted: boolean; id: string }> {
+      return dietRequest<{ deleted: boolean; id: string }>(`/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        timeoutMs: 20000,
+        timeoutMessage: 'Deleting this plan took too long. Please try again.',
+      });
     },
   },
 };

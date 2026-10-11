@@ -1,16 +1,17 @@
 /**
- * Lab Tests — NABL tests list + search + book home collection.
- * Backend: GET /api/v1/lab-tests, booking → POST /bookings (serviceType lab_test).
+ * Lab Tests — pehle labs ki list (name + avatar), phir click par uske tests.
+ * Backend: GET /api/v1/vendors?type=lab, GET /api/v1/lab-tests?vendorId=
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from '../components/Icon';
 import { AppButton, Badge, Card, EmptyState, ErrorState, Loader, Screen } from '../components/UI';
-import api, { LabTest } from '../api/api';
+import api, { LabTest, Vendor } from '../api/api';
+import { photoUrl } from '../components/DoctorCard';
 import { RootStackParamList } from '../navigation/types';
 
 import { colors, radius, spacing, typography } from '../theme/theme';
@@ -24,40 +25,156 @@ export default function LabTestsScreen(): React.JSX.Element {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
 
+  const [labs, setLabs] = useState<Vendor[]>([]);
   const [tests, setTests] = useState<LabTest[]>([]);
+  const [selectedLab, setSelectedLab] = useState<Vendor | null>(null);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadingTests, setLoadingTests] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const loadLabs = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await api.labTests.list({ search: query || undefined });
-      setTests(result);
+      const result = await api.vendors.list({ type: 'lab' });
+      setLabs(result);
     } catch (e) {
-      setError((e as Error).message || 'Could not load lab tests.');
+      setError((e as Error).message || 'Could not load labs.');
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const loadTests = useCallback(async (vendorId: string) => {
+    setLoadingTests(true);
+    try {
+      const result = await api.labTests.list({ vendorId, search: query || undefined });
+      setTests(result);
+    } catch {
+      setTests([]);
+    } finally {
+      setLoadingTests(false);
     }
   }, [query]);
 
   useEffect(() => {
-    const t = setTimeout(load, 300);
-    return () => clearTimeout(t);
-  }, [load]);
+    loadLabs();
+  }, [loadLabs]);
 
+  useEffect(() => {
+    if (selectedLab) {
+      const t = setTimeout(() => loadTests(selectedLab.id), 300);
+      return () => clearTimeout(t);
+    }
+  }, [selectedLab, loadTests]);
+
+  const openLab = (lab: Vendor) => {
+    setSelectedLab(lab);
+    setTests([]);
+    setQuery('');
+  };
+
+  const goBack = () => {
+    setSelectedLab(null);
+    setTests([]);
+    setQuery('');
+  };
+
+  /* ------------------------------ Labs list ------------------------------ */
+  if (!selectedLab) {
+    return (
+      <Screen>
+        <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+          <View style={styles.headerTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={typography.h3}>Laboratories</Text>
+              <Text style={[typography.small, { marginTop: 2 }]}>
+                {labs.length} certified labs • Free home pickup
+              </Text>
+            </View>
+            <Badge label="NABL Labs" tone="warning" icon="award" />
+          </View>
+        </View>
+
+        {loading ? (
+          <Loader label="Loading labs…" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={loadLabs} />
+        ) : labs.length === 0 ? (
+          <EmptyState
+            icon="flask"
+            title="No labs available"
+            subtitle="Certified pathology labs will appear here soon."
+            actionLabel="Refresh"
+            onAction={loadLabs}
+          />
+        ) : (
+          <FlatList
+            data={labs}
+            keyExtractor={item => item.id}
+            contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl * 2, gap: spacing.md }}
+            showsVerticalScrollIndicator={false}
+            refreshing={loading}
+            onRefresh={loadLabs}
+            renderItem={({ item }) => {
+              const photo = photoUrl(item.avatar);
+              return (
+                <Pressable onPress={() => openLab(item)}>
+                  <Card>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+                      <View style={styles.labAvatar}>
+                        {photo ? (
+                          <Image source={{ uri: photo }} style={styles.labAvatarImage} resizeMode="cover" />
+                        ) : (
+                          <Icon name="flask" size={22} color={colors.primary} />
+                        )}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={typography.h4} numberOfLines={1}>{item.name}</Text>
+                        {item.city ? (
+                          <Text style={[typography.caption, { marginTop: 2 }]}>{item.city}</Text>
+                        ) : null}
+                        {item.labDetails?.homeSampleCollectionAvailable ? (
+                          <View style={{ marginTop: 6 }}>
+                            <Badge label="Free home pickup" tone="success" icon="home" />
+                          </View>
+                        ) : null}
+                      </View>
+                      <Icon name="chevron-right" size={18} color={colors.textMuted} />
+                    </View>
+                  </Card>
+                </Pressable>
+              );
+            }}
+          />
+        )}
+      </Screen>
+    );
+  }
+
+  /* ------------------------------ Tests list ------------------------------ */
+  const photo = photoUrl(selectedLab.avatar);
   return (
     <Screen>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <View style={styles.headerTop}>
-          <View style={{ flex: 1 }}>
-            <Text style={typography.h3}>Lab Tests at Home</Text>
+          <Pressable onPress={goBack} hitSlop={8} style={styles.backBtn}>
+            <Icon name="arrow-left" size={20} color={colors.text} />
+          </Pressable>
+          <View style={{ flex: 1, marginLeft: spacing.sm }}>
+            <Text style={typography.h3} numberOfLines={1}>{selectedLab.name}</Text>
             <Text style={[typography.small, { marginTop: 2 }]}>
-              Free sample pickup • Digital reports in 24 hrs
+              {tests.length} tests available
             </Text>
           </View>
-          <Badge label="NABL Labs" tone="warning" icon="award" />
+          {photo ? (
+            <Image source={{ uri: photo }} style={styles.headerAvatar} resizeMode="cover" />
+          ) : (
+            <View style={[styles.headerAvatar, styles.headerAvatarFallback]}>
+              <Icon name="flask" size={18} color={colors.primary} />
+            </View>
+          )}
         </View>
 
         <View style={styles.search}>
@@ -77,17 +194,15 @@ export default function LabTestsScreen(): React.JSX.Element {
         </View>
       </View>
 
-      {loading && tests.length === 0 ? (
-        <Loader label="Loading diagnostic tests…" />
-      ) : error && tests.length === 0 ? (
-        <ErrorState message={error} onRetry={load} />
+      {loadingTests && tests.length === 0 ? (
+        <Loader label="Loading tests…" />
       ) : tests.length === 0 ? (
         <EmptyState
           icon="flask"
-          title="No diagnostic tests currently available"
-          subtitle="Certified pathology labs will list test packages here soon."
+          title="No tests found"
+          subtitle={query ? `No tests match "${query}" in this lab.` : 'This lab has not listed any tests yet.'}
           actionLabel="Refresh"
-          onAction={load}
+          onAction={() => loadTests(selectedLab.id)}
         />
       ) : (
         <FlatList
@@ -95,57 +210,54 @@ export default function LabTestsScreen(): React.JSX.Element {
           keyExtractor={item => item.id}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl * 2, gap: spacing.md }}
           showsVerticalScrollIndicator={false}
-          refreshing={loading}
-          onRefresh={load}
+          refreshing={loadingTests}
+          onRefresh={() => loadTests(selectedLab.id)}
           renderItem={({ item }) => {
             const mrp = item.price;
             const price = item.discountedPrice ?? item.price;
             const off = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
             return (
-              <Card>
-                <View style={{ flexDirection: 'row', gap: spacing.md }}>
-                  <View style={styles.testIcon}>
-                    <Icon name="flask" size={22} color={colors.primary} />
+              <Pressable onPress={() => navigation.navigate('DoctorDetail', { doctorId: selectedLab.id })}>
+                <Card>
+                  <View style={{ flexDirection: 'row', gap: spacing.md }}>
+                    <View style={styles.testIcon}>
+                      {item.image ? (
+                        <Image source={{ uri: item.image }} style={styles.testImage} resizeMode="cover" />
+                      ) : (
+                        <Icon name="flask" size={22} color={colors.primary} />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={typography.h4} numberOfLines={2}>{item.name}</Text>
+                      <Text style={[typography.caption, { marginTop: 2 }]}>{item.category}</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        <Badge label={`Report: ${item.turnaroundTime ?? '24 Hrs'}`} tone="info" icon="clock" />
+                        <Badge label={`${item.sampleType ?? 'Blood'} sample`} tone="brand" />
+                        {item.homeCollectionAvailable !== false ? (
+                          <Badge label="Free home pickup" tone="success" icon="home" />
+                        ) : null}
+                      </View>
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={typography.h4} numberOfLines={2}>
-                      {item.name}
+
+                  {item.description ? (
+                    <Text style={[typography.small, { marginTop: spacing.md }]} numberOfLines={2}>
+                      {item.description}
                     </Text>
-                    <Text style={[typography.caption, { marginTop: 2 }]}>{item.category}</Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                      <Badge label={`Report: ${item.turnaroundTime ?? '24 Hrs'}`} tone="info" icon="clock" />
-                      <Badge label={`${item.sampleType ?? 'Blood'} sample`} tone="brand" />
-                      {item.homeCollectionAvailable !== false ? (
-                        <Badge label="Free home pickup" tone="success" icon="home" />
-                      ) : null}
+                  ) : null}
+
+                  <View style={styles.priceRow}>
+                    <View>
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                        <Text style={typography.price}>₹{price}</Text>
+                        {off > 0 ? <Text style={styles.mrp}>₹{mrp}</Text> : null}
+                        {off > 0 ? <Text style={styles.off}>{off}% OFF</Text> : null}
+                      </View>
+                      <Text style={typography.caption}>Fasting: {item.preparationInstructions ? 'as instructed' : 'not required'}</Text>
                     </View>
                   </View>
-                </View>
-
-                {item.description ? (
-                  <Text style={[typography.small, { marginTop: spacing.md }]} numberOfLines={2}>
-                    {item.description}
-                  </Text>
-                ) : null}
-
-                <View style={styles.priceRow}>
-                  <View>
-                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                      <Text style={typography.price}>₹{price}</Text>
-                      {off > 0 ? <Text style={styles.mrp}>₹{mrp}</Text> : null}
-                      {off > 0 ? <Text style={styles.off}>{off}% OFF</Text> : null}
-                    </View>
-                    <Text style={typography.caption}>Fasting: {item.preparationInstructions ? 'as instructed' : 'not required'}</Text>
-                  </View>
-                  <AppButton
-                    label="Book Test"
-                    icon="calendar"
-                    size="sm"
-                    full={false}
-                    onPress={() => navigation.navigate('Booking', { mode: 'lab', test: item })}
-                  />
-                </View>
-              </Card>
+                </Card>
+              </Pressable>
             );
           }}
         />
@@ -163,6 +275,25 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   headerTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.cardMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  headerAvatarFallback: {
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -176,6 +307,16 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   searchInput: { flex: 1, ...typography.body, paddingVertical: 0, color: colors.text },
+  labAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  labAvatarImage: { width: '100%', height: '100%' },
   testIcon: {
     width: 46,
     height: 46,
@@ -183,7 +324,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  testImage: { width: '100%', height: '100%' },
   priceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

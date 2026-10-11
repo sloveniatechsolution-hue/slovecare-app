@@ -4,14 +4,17 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppHeader from '../components/AppHeader';
 import Icon, { IconName } from '../components/Icon';
+import ReviewGateModal, { ReviewGateKind } from '../components/ReviewGateModal';
+import ReviewSheet from '../components/ReviewSheet';
 import { DegreeVerifiedBadge, photoUrl, staffLabel, visitFee, VerificationBadge } from '../components/DoctorCard';
 import { AppButton, Badge, Card, ErrorState, Loader, Rating, Screen, SectionHeader } from '../components/UI';
-import api, { LabTest, Review, Vendor, VendorStats } from '../api/api';
+import api, { LabTest, Review, ReviewEligibility, Vendor, VendorStats } from '../api/api';
+import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from '../navigation/types';
 
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
@@ -28,6 +31,7 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
 
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
+  const { user, isLoggedIn } = useAuth();
 
   const [doctor, setDoctor] = useState<Vendor | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -38,6 +42,32 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
   const [heroHeight, setHeroHeight] = useState(HERO_FALLBACK_H);
   const [failedPhoto, setFailedPhoto] = useState<string | null>(null);
   const heroPhoto = photoUrl(doctor?.avatar);
+
+  /* --------------------------- Review form state --------------------------- */
+  const [reviewAccess, setReviewAccess] = useState<ReviewEligibility | null>(null);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  /* Lab tests — selected test ka ID (tab-style selection, doctor tab jaisa). */
+  const [selectedTestId, setSelectedTestId] = useState<string | null>(null);
+  /* Native Alert ki jagah premium centered card — login / already reviewed /
+     completed visit ke teeno gates ke liye. */
+  const [gateModal, setGateModal] = useState<{ kind: ReviewGateKind } | null>(null);
+
+  /**
+   * Patient review de sakta ya nahi (completed booking + pehle se na diya ho).
+   * Sirf logged-in patient ke liye; failure par button chhup jaata hai.
+   */
+  const loadReviewAccess = useCallback(async () => {
+    if (!isLoggedIn || !user) {
+      setReviewAccess(null);
+      return;
+    }
+    try {
+      const access = await api.reviews.eligibility(doctorId);
+      setReviewAccess(access);
+    } catch {
+      setReviewAccess(null);
+    }
+  }, [doctorId, isLoggedIn, user]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,11 +92,46 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
     } finally {
       setLoading(false);
     }
-  }, [doctorId]);
+    loadReviewAccess();
+  }, [doctorId, loadReviewAccess]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  /**
+   * "Write Review" ka entry point — button hamesha dikhta hai (warna patient
+   * ko pata hi nahi chalta ki review kahan se hota hai), lekin file hone par
+   * wajah ke saath premium gate modal dikhta hai: login / completed visit /
+   * already reviewed.
+   */
+  const openReview = () => {
+    if (!isLoggedIn || !user) {
+      setGateModal({ kind: 'login' });
+      return;
+    }
+    if (reviewAccess?.myReview) {
+      setGateModal({ kind: 'already-reviewed' });
+      return;
+    }
+    if (!reviewAccess?.eligible) {
+      setGateModal({ kind: 'visit-required' });
+      return;
+    }
+    setReviewModalOpen(true);
+  };
+
+  const closeGateModal = () => setGateModal(null);
+
+  const handleGatePrimary = () => {
+    const kind = gateModal?.kind;
+    closeGateModal();
+    if (kind === 'login') {
+      navigation.navigate('Auth');
+    } else if (kind === 'visit-required') {
+      navigation.navigate('Booking', { mode: 'doctor', doctorId });
+    }
+  };
 
   /* Photo ke aspect ratio se hero height — chehra upar se cut na ho. */
   useEffect(() => {
@@ -159,19 +224,39 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
     .filter(([, enabled]) => Boolean(enabled))
     .map(([key]) => labelForService(key));
 
+  /*
+   * Consult online card — sirf tab jab doctor ne panel se video/chat
+   * consultation enable ki ho (services.videoConsultation / chatConsultation).
+   * Fee/duration bhi wahi se (koi fabricated number nahi).
+   */
+  const consultServices = details?.services ?? doctor.services ?? {};
+  const consultationRows = ([
+    {
+      mode: 'video' as const,
+      title: 'Video Consultation',
+      icon: 'video' as const,
+      enabled: consultServices.videoConsultation === true,
+      fee: pricing.videoConsultationFee ?? 0,
+      duration: pricing.videoConsultationMinutes,
+    },
+    {
+      mode: 'chat' as const,
+      title: 'Chat with Doctor',
+      icon: 'message-circle' as const,
+      enabled: consultServices.chatConsultation === true,
+      fee: pricing.chatConsultationFee ?? 0,
+      duration: pricing.chatSessionMinutes,
+    },
+  ]).filter(row => row.enabled);
+
   return (
     <Screen>
       <AppHeader
         title={doctor.name}
         subtitle={staffLabel(doctor)}
         onBack={() => navigation.goBack()}
-        rightIcon="phone"
-        onRightPress={() => {
-          if (doctor.phone) {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            require('react-native').Linking.openURL(`tel:${doctor.phone.replace(/\s/g, '')}`).catch(() => {});
-          }
-        }}
+        /* Privacy: doctor ka phone number patient ko kabhi nahi dikhta —
+           koi tel: link / call button nahi (sirf in-app consultations). */
       />
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl * 2 }}>
@@ -239,13 +324,46 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
         {/* Vendor-set fees — panel ke "Services & Prices" se aate hain */}
         {feeRows.length ? (
           <Card style={{ marginTop: spacing.lg }}>
-            <SectionHeader title="Fees" subtitle="Provider ne khud set kiye hain" />
+            <SectionHeader title="Fees" subtitle="Set directly by the provider" />
             <View style={{ gap: 2 }}>
               {feeRows.map(row => (
                 <View key={row.label} style={styles.feeRow}>
                   <Text style={[typography.small, { flex: 1 }]}>{row.label}</Text>
                   <Text style={[typography.smallMedium, { color: colors.primary }]}>₹{row.value}</Text>
                 </View>
+              ))}
+            </View>
+          </Card>
+        ) : null}
+
+        {/* Consult online — video call / paid chat (doctor ke enable kiye hue) */}
+        {consultationRows.length ? (
+          <Card style={{ marginTop: spacing.lg }}>
+            <SectionHeader title="Consult online" subtitle="Video call & live chat — no phone number shared" />
+            <View style={{ gap: spacing.sm }}>
+              {consultationRows.map(row => (
+                <Pressable
+                  key={row.mode}
+                  onPress={() => navigation.navigate('ConsultationBook', { doctorId, mode: row.mode })}
+                  style={styles.consultRow}
+                >
+                  <View style={styles.highlightIcon}>
+                    <Icon name={row.icon} size={16} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={typography.smallMedium}>{row.title}</Text>
+                    <Text style={typography.caption}>
+                      {row.duration ? `${row.duration} min • ` : ''}
+                      {row.fee > 0 ? `₹${row.fee}` : 'Free'}
+                    </Text>
+                  </View>
+                  <AppButton
+                    label="Book"
+                    size="sm"
+                    variant="outline"
+                    onPress={() => navigation.navigate('ConsultationBook', { doctorId, mode: row.mode })}
+                  />
+                </Pressable>
               ))}
             </View>
           </Card>
@@ -296,30 +414,49 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
           </Card>
         ) : null}
 
-        {/* Lab tests + daam + seedha booking */}
+        {/* Lab tests + daam + book (doctor tab jaisa flow) */}
         {lab && labTests.length ? (
           <Card style={{ marginTop: spacing.lg }}>
             <SectionHeader title="Lab Tests" subtitle={`${labTests.length} tests available`} />
             <View style={{ gap: spacing.sm }}>
-              {labTests.map(test => (
-                <View key={test.id} style={styles.testRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={typography.smallMedium} numberOfLines={1}>{test.name}</Text>
-                    {test.category ? (
-                      <Text style={typography.caption}>{test.category}</Text>
+              {labTests.map(test => {
+                const active = selectedTestId === test.id;
+                const price = test.discountedPrice ?? test.price;
+                return (
+                  <View key={test.id}>
+                    <Pressable
+                      onPress={() => setSelectedTestId(test.id)}
+                      style={[styles.testRow, active && styles.testRowActive]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={typography.smallMedium} numberOfLines={1}>{test.name}</Text>
+                        {test.category ? (
+                          <Text style={typography.caption}>{test.category}</Text>
+                        ) : null}
+                      </View>
+                      <Text style={[typography.smallMedium, { color: colors.primary }]}>
+                        ₹{price}
+                      </Text>
+                    </Pressable>
+                    {/* Selected test — price + Book Test button */}
+                    {active ? (
+                      <View style={styles.testBookRow}>
+                        <View>
+                          <Text style={typography.price}>₹{price}</Text>
+                          {test.turnaroundTime ? (
+                            <Text style={typography.caption}>Report in {test.turnaroundTime}</Text>
+                          ) : null}
+                        </View>
+                        <AppButton
+                          label="Book Test"
+                          size="sm"
+                          onPress={() => navigation.navigate('Booking', { mode: 'lab', test })}
+                        />
+                      </View>
                     ) : null}
                   </View>
-                  <Text style={[typography.smallMedium, { color: colors.primary }]}>
-                    ₹{test.discountedPrice ?? test.price}
-                  </Text>
-                  <AppButton
-                    label="Book"
-                    size="sm"
-                    variant="outline"
-                    onPress={() => navigation.navigate('Booking', { mode: 'lab', test })}
-                  />
-                </View>
-              ))}
+                );
+              })}
             </View>
           </Card>
         ) : null}
@@ -395,12 +532,54 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
           <SectionHeader
             title="Patient Reviews"
             subtitle={`${reviews.length} verified review${reviews.length === 1 ? '' : 's'}`}
+            /* Button kabhi chhupta nahi — warna patient ko review ka pata na
+               chale. Login / completed visit / already reviewed — teeno cases
+               openReview() me handle ho jaate hain. */
+            actionLabel={reviewAccess?.myReview ? 'Reviewed' : 'Write Review'}
+            onAction={openReview}
           />
+
+          {/* Patient ka apna review — provider tak approval me hai */}
+          {reviewAccess?.myReview ? (
+            <Card style={{ marginBottom: spacing.md }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{initials(user?.name || reviewAccess.myReview.customerName)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={typography.smallMedium}>Your review</Text>
+                  <Text style={typography.caption}>{reviewAccess.myReview.date}</Text>
+                </View>
+                <Rating value={reviewAccess.myReview.rating} size={12} showValue={false} />
+              </View>
+              <Text style={[typography.small, { marginTop: spacing.sm, lineHeight: 20 }]}>
+                {reviewAccess.myReview.comment}
+              </Text>
+              {reviewAccess.myReview.status === 'pending' ? (
+                <View style={styles.pendingWrap}>
+                  <Icon name="clock" size={13} color={colors.warning} />
+                  <Text style={styles.pendingText}>
+                    Approval pending — provider accept karega tabhi ye profile par dikhega.
+                  </Text>
+                </View>
+              ) : null}
+            </Card>
+          ) : null}
+
           {reviews.length === 0 ? (
             <Card>
               <Text style={[typography.small, { textAlign: 'center' }]}>
                 No reviews yet — be the first to share your experience.
               </Text>
+              {/* Review dene ka option khali section me bhi */}
+              <View style={{ marginTop: spacing.md }}>
+                <AppButton
+                  label="Write a Review"
+                  icon="star"
+                  variant="outline"
+                  onPress={openReview}
+                />
+              </View>
             </Card>
           ) : (
             <View style={{ gap: spacing.md }}>
@@ -429,6 +608,13 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
               ))}
             </View>
           )}
+
+          {/* Patient ko batao ki review bhi hota hai — Appointments se bhi. */}
+          <Text style={[typography.caption, styles.reviewHint]}>
+            {reviewAccess?.myReview
+              ? 'Aapka review is provider ke paas approval ke liye hai.'
+              : 'Visit complete hone ke baad Appointments → Completed se bhi review de sakte hain.'}
+          </Text>
         </View>
       </ScrollView>
 
@@ -452,6 +638,24 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
           </View>
         </View>
       ) : null}
+
+      {/* ------------------------ Review form sheet ------------------------ */}
+      <ReviewSheet
+        visible={reviewModalOpen}
+        vendorId={doctorId}
+        vendorName={doctor?.name ?? ''}
+        bookingId={reviewAccess?.completedBookingId}
+        onClose={() => setReviewModalOpen(false)}
+        onSubmitted={() => loadReviewAccess()}
+      />
+
+      {/* Review gate — login / completed visit / already reviewed (premium card) */}
+      <ReviewGateModal
+        visible={gateModal !== null}
+        kind={gateModal?.kind ?? 'visit-required'}
+        onPrimary={handleGatePrimary}
+        onDismiss={closeGateModal}
+      />
     </Screen>
   );
 }
@@ -459,6 +663,8 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
 function labelForService(key: string): string {
   const map: Record<string, string> = {
     onlineConsultation: 'Online Consultation',
+    videoConsultation: 'Video Consultation',
+    chatConsultation: 'Live Chat',
     homeVisit: 'Home Visit',
     clinicVisit: 'Clinic Visit',
     injection: 'Injection',
@@ -493,6 +699,16 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  testRowActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
+  testBookRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.xs,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
   testRow: {
     flexDirection: 'row',
@@ -538,6 +754,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  consultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -573,4 +797,22 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+
+  /* ------------------------- Review form (bottom sheet) ------------------- */
+  reviewHint: {
+    marginTop: spacing.md,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  pendingWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.md,
+    backgroundColor: colors.warningLight,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+  },
+  pendingText: { ...typography.caption, color: colors.warning, flex: 1 },
 });

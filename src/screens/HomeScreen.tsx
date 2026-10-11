@@ -1,5 +1,5 @@
 /**
- * Home — dashboard: quick actions, services, featured doctors, live bed status.
+ * Home — dashboard: quick actions, services, featured doctors (2×2 grid).
  * Saari data calls src/api/api.ts se hain.
  */
 
@@ -13,20 +13,20 @@ import { Logo } from '../components/Logo';
 import DoctorCard from '../components/DoctorCard';
 import NearbyMap from '../components/NearbyMap';
 import HeroSection from '../components/HeroSection';
+import HowItWorksCard from '../components/HowItWorksCard';
 import {
   AppButton,
-  Badge,
   Card,
   GradientCard,
   Loader,
   Screen,
   SectionHeader,
 } from '../components/UI';
-import api, { apiOrigin, Doctor, HealthcareService, HospitalBed } from '../api/api';
+import api, { apiOrigin, DietPlanListItem, Doctor, HealthcareService } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList, StaffType } from '../navigation/types';
 
-import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+import { colors, gradients, radius, shadow, spacing, typography } from '../theme/theme';
 
 import { useThemePreference } from '../theme/ThemeContext';
 
@@ -35,8 +35,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 const EMERGENCY_NUMBER = '1800-123-456';
 
 /**
- * Featured cards chhote hain taaki horizontal scroll me ek baar 2 cards aa jayein —
- * screen ki visible width (section padding ke baad) me gap ke saath 2 cards fit.
+ * Doctor cards grid me hain (2 columns) — width aisi ke 2 rows × 2 cards = 4
+ * cards home tab par screen me hi dikh jayein, View All se poori list.
  */
 const CARD_GAP = spacing.md;
 const CARD_WIDTH = Math.floor((Dimensions.get('window').width - spacing.lg * 2 - CARD_GAP) / 2);
@@ -47,6 +47,22 @@ function avatarUrl(avatar?: string): string | undefined {
   const origin = apiOrigin();
   return `${origin}${avatar.startsWith('/') ? '' : '/'}${avatar}`;
 }
+
+/** 'YYYY-MM-DD' → '12 Oct' (home screen plan cards ke liye). */
+function shortPlanDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${d} ${months[m - 1]}`;
+}
+
+const GOAL_SHORT: Record<string, string> = {
+  weight_loss: 'Weight loss',
+  weight_gain: 'Weight gain',
+  muscle_building: 'Muscle building',
+  weight_maintenance: 'Maintenance',
+  general_healthy_eating: 'Healthy eating',
+};
 
 const FALLBACK_SERVICES: HealthcareService[] = [
   { id: 's1', name: 'Doctor Home Visits', description: 'Verified doctors at your door', icon: 'stethoscope', category: 'Doctor' },
@@ -67,7 +83,7 @@ const CARE_SERVICE: HealthcareService = {
   route: 'Doctors',
 };
 
-type QuickRoute = 'Doctors' | 'Labs' | 'PrescriptionReader' | 'Appointments';
+type QuickRoute = 'Doctors' | 'Labs' | 'PrescriptionReader' | 'Appointments' | 'DietPlanner';
 
 /** Har quick action ka apna accent — solid icon badge + matching chevron tint. */
 const TILE_BADGES = StyleSheet.create({
@@ -114,13 +130,6 @@ const QUICK_ACTIONS: {
   { label: 'Prescription Reader', sub: 'Scan & understand RX with AI', icon: 'file-text', route: 'PrescriptionReader', accent: 'blue', featured: true },
 ];
 
-const STEPS = [
-  { no: '01', icon: 'calendar' as IconName, title: 'Book Appointment', text: 'Pick a doctor, nurse or lab test in seconds.' },
-  { no: '02', icon: 'home' as IconName, title: 'Professional Arrives', text: 'Certified staff reaches your door with equipment.' },
-  { no: '03', icon: 'stethoscope' as IconName, title: 'Treatment & Care', text: 'Checkup, sample pickup or emergency support.' },
-  { no: '04', icon: 'file-text' as IconName, title: 'Digital Report', text: 'Prescription & reports on your phone instantly.' },
-];
-
 export default function HomeScreen(): React.JSX.Element {
   useThemePreference();
   const navigation = useNavigation<Nav>();
@@ -129,33 +138,47 @@ export default function HomeScreen(): React.JSX.Element {
 
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [services, setServices] = useState<HealthcareService[]>([]);
-  const [beds, setBeds] = useState<HospitalBed[]>([]);
+  const [dietPlans, setDietPlans] = useState<DietPlanListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
+  /** Care nearby map ka selected filter — 'Available for Booking' section ko sync rakhta hai. */
+  const [nearbyFilter, setNearbyFilter] = useState<StaffType>('doctor');
   const userAvatar = avatarFailed ? undefined : avatarUrl(user?.avatar);
   const userInitial = user?.name?.trim().charAt(0).toUpperCase() || 'U';
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const [docRes, svcRes, bedRes] = await Promise.allSettled([
-        api.doctors.list({ homeVisit: true }),
+      /* Nearby map ka filter 'Available for Booking' section ko bhi drive karta hai —
+         Labs chip dabane par labs dikhte hain, Doctors par wapas doctors. */
+      const docQuery =
+        nearbyFilter === 'doctor'
+          ? { homeVisit: true }
+          : { type: nearbyFilter };
+      const [docRes, svcRes, dietRes] = await Promise.allSettled([
+        api.doctors.list(docQuery),
         api.services.list(),
-        api.hospitals.beds(),
+        /* Diet plans sirf logged-in user ke liye (auth endpoint) — failure par
+           home screen khaali history section ke saath bhi theek chalta hai. */
+        isLoggedIn ? api.dietPlans.list() : Promise.reject(new Error('not logged in')),
       ]);
       if (docRes.status === 'fulfilled') {
-        setDoctors(docRes.value.slice(0, 6));
+        /* Home tab par hamesha 4 cards (2 rows × 2) — View All par poori list. */
+        setDoctors(docRes.value.slice(0, 4));
       }
       if (svcRes.status === 'fulfilled' && svcRes.value.length > 0) {
         setServices(svcRes.value.slice(0, 6));
       }
-      if (bedRes.status === 'fulfilled') {
-        setBeds(bedRes.value.slice(0, 3));
+      if (dietRes.status === 'fulfilled') {
+        setDietPlans(dietRes.value);
+      } else {
+        setDietPlans([]);
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isLoggedIn, nearbyFilter]);
 
   useEffect(() => {
     load();
@@ -180,6 +203,8 @@ export default function HomeScreen(): React.JSX.Element {
       navigation.navigate('PrescriptionReader');
     } else if (route === 'Appointments') {
       navigation.navigate('Appointments');
+    } else if (route === 'DietPlanner') {
+      navigation.navigate('DietPlanner');
     } else {
       /* type hamesha bhejo (doctor/caretaker/…) — undefined bhejne par purana
          filter (jaise Care Takers) Doctors tab me reh jaata tha. openedAt se
@@ -199,6 +224,18 @@ export default function HomeScreen(): React.JSX.Element {
     const hasCare = base.some(s => /caretaker|elder/i.test(`${s.name} ${s.category ?? ''}`));
     return [...(hasCare ? [] : [CARE_SERVICE]), ...base].slice(0, 6);
   }, [services]);
+
+  /* Is hafte ka plan (aaj date week range me) = current; baaki history. */
+  const { currentDietPlan, pastDietPlans } = React.useMemo(() => {
+    const today = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+    const current = dietPlans.find(p => p.weekStart <= todayStr && todayStr <= p.weekEnd);
+    return {
+      currentDietPlan: current,
+      pastDietPlans: dietPlans.filter(p => p.id !== current?.id).slice(0, 8),
+    };
+  }, [dietPlans]);
 
   return (
     <Screen>
@@ -289,36 +326,142 @@ export default function HomeScreen(): React.JSX.Element {
           ))}
         </View>
 
+        {/* ----------------------- AI Weekly Diet Planner ---------------------- */}
+        <View style={styles.section}>
+          <SectionHeader
+            title="AI Weekly Diet Planner"
+            subtitle="Personalized 7-day meal plan for your goals"
+          />
+          <GradientCard style={styles.dietCard} from={gradients.diet[0]} to={gradients.diet[1]}>
+            <View style={styles.dietInner}>
+              <View style={styles.dietIcon}>
+                <Icon name="utensils" size={18} color={colors.textInverse} />
+              </View>
+              <Text style={styles.dietTitle}>AI Weekly Diet Planner</Text>
+              <Text style={styles.dietSub}>
+                Get a personalized 7-day diet plan based on your health goals and food preferences.
+              </Text>
+
+              {currentDietPlan ? (
+                <Pressable
+                  style={({ pressed }) => [styles.dietCurrent, pressed && { opacity: 0.85 }]}
+                  onPress={() =>
+                    navigation.navigate('DietPlanResult', { planId: currentDietPlan.id })
+                  }
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.dietCurrentTitle} numberOfLines={1}>
+                      This week’s plan ·{' '}
+                      {GOAL_SHORT[currentDietPlan.summary?.goal ?? ''] ?? currentDietPlan.summary?.goal ?? 'Healthy eating'}
+                    </Text>
+                    <Text style={styles.dietCurrentSub}>
+                      {shortPlanDate(currentDietPlan.weekStart)} – {shortPlanDate(currentDietPlan.weekEnd)}
+                      {currentDietPlan.summary?.avgCalories ? ` · ~${currentDietPlan.summary.avgCalories} kcal/day` : ''}
+                    </Text>
+                  </View>
+                  <Icon name="chevron-right" size={16} color={colors.textInverse} />
+                </Pressable>
+              ) : null}
+
+              <Pressable
+                style={({ pressed }) => [styles.dietCta, pressed && { opacity: 0.9 }]}
+                onPress={() => go('DietPlanner')}
+                accessibilityRole="button"
+                accessibilityLabel="Create My Diet Plan"
+              >
+                <Icon name="sparkles" size={15} color={colors.violetInk} />
+                <Text style={styles.dietCtaText}>Create My Diet Plan</Text>
+              </Pressable>
+            </View>
+          </GradientCard>
+
+          {/* Previous plans — history */}
+          {pastDietPlans.length > 0 ? (
+            <View style={{ marginTop: spacing.md }}>
+              <SectionHeader title="Previous Plans" subtitle={`${pastDietPlans.length} saved plan${pastDietPlans.length === 1 ? '' : 's'}`} />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: CARD_GAP }}>
+                {pastDietPlans.map(plan => (
+                  <Pressable
+                    key={plan.id}
+                    style={({ pressed }) => [styles.pastPlanCard, pressed && { opacity: 0.85 }]}
+                    onPress={() => navigation.navigate('DietPlanResult', { planId: plan.id })}
+                  >
+                    <View style={styles.pastPlanIcon}>
+                      <Icon name="calendar" size={15} color={colors.primary} />
+                    </View>
+                    <Text style={typography.smallMedium} numberOfLines={1}>
+                      {shortPlanDate(plan.weekStart)} – {shortPlanDate(plan.weekEnd)}
+                    </Text>
+                    <Text style={typography.caption} numberOfLines={1}>
+                      {GOAL_SHORT[plan.summary?.goal ?? ''] ?? plan.summary?.goal ?? 'Healthy eating'}
+                      {plan.version > 1 ? ` · v${plan.version}` : ''}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+        </View>
+
         {/* --------------------------- Care nearby map ------------------------ */}
         <View style={styles.section}>
           <SectionHeader
             title="Care nearby"
             subtitle="Medical staff around you — tap a pin to book"
           />
-          <NearbyMap onSelect={provider => navigation.navigate('DoctorDetail', { doctorId: provider.id })} />
+          <NearbyMap
+            onSelect={provider => navigation.navigate('DoctorDetail', { doctorId: provider.id })}
+            onFilterChange={type => setNearbyFilter(type as StaffType)}
+          />
         </View>
 
-        {/* -------------------------------- Stats ------------------------------- */}
-        <View style={[styles.section, { marginTop: spacing.xl }]}>
-          <View style={styles.statsRow}>
-            {[
-              { icon: 'clock' as IconName, value: '24/7', label: 'Available now' },
-              { icon: 'users' as IconName, value: '50+', label: 'Certified staff' },
-              { icon: 'award' as IconName, value: '4.9', label: 'Average rating' },
-            ].map(s => (
-              <Card key={s.label} style={styles.statCard} padded={false}>
-                <View style={{ padding: spacing.sm, alignItems: 'center' }}>
-                  <View style={styles.statIcon}>
-                    <Icon name={s.icon} size={14} color={colors.primary} />
+        {/* ---------------------------- Featured doctors ------------------------ */}
+        <View style={styles.section}>
+          <SectionHeader
+            title="Available for Booking"
+            subtitle={
+              nearbyFilter === 'lab'
+                ? 'Diagnostic labs near you'
+                : nearbyFilter === 'caretaker'
+                  ? 'Caretakers for home visits'
+                  : 'Medical staff for home visits'
+            }
+            actionLabel="View All"
+            onAction={() =>
+              nearbyFilter === 'lab'
+                ? navigation.navigate('Main', { screen: 'Labs' })
+                : navigation.navigate('Main', {
+                    screen: 'Doctors',
+                    params: { type: nearbyFilter === 'doctor' ? 'doctor' : nearbyFilter, openedAt: Date.now() },
+                  })
+            }
+          />
+
+          {loading ? (
+            <Card>
+              <Loader label="Loading medical staff…" />
+            </Card>
+          ) : doctors.length === 0 ? (
+            <Card>
+              <Text style={[typography.small, { textAlign: 'center' }]}>
+                No staff listed right now. Pull to refresh.
+              </Text>
+            </Card>
+          ) : (
+            <>
+              {/* 2 rows × 2 cards — home tab par hamesha 4 cards dikhte hain */}
+              <View style={styles.doctorGrid}>
+                {doctors.map(d => (
+                  <View key={d.id} style={styles.doctorGridItem}>
+                    <DoctorCard
+                      doctor={d}
+                      onPress={() => navigation.navigate('DoctorDetail', { doctorId: d.id })}
+                    />
                   </View>
-                  <Text style={styles.statValue}>{s.value}</Text>
-                  <Text style={[typography.caption, { textAlign: 'center' }]} numberOfLines={1}>
-                    {s.label}
-                  </Text>
-                </View>
-              </Card>
-            ))}
-          </View>
+                ))}
+              </View>
+            </>
+          )}
         </View>
 
         {/* ------------------------------- Services ----------------------------- */}
@@ -353,99 +496,32 @@ export default function HomeScreen(): React.JSX.Element {
           </View>
         </View>
 
-        {/* ---------------------------- Featured doctors ------------------------ */}
-        <View style={styles.section}>
-          <SectionHeader
-            title="Available for Booking"
-            subtitle="Medical staff for home visits"
-            actionLabel="View All"
-            onAction={() => navigation.navigate('Main', { screen: 'Doctors' })}
-          />
-
-          {loading ? (
-            <Card>
-              <Loader label="Loading medical staff…" />
-            </Card>
-          ) : doctors.length === 0 ? (
-            <Card>
-              <Text style={[typography.small, { textAlign: 'center' }]}>
-                No staff listed right now. Pull to refresh.
-              </Text>
-            </Card>
-          ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: CARD_GAP }}>
-              {doctors.map(d => (
-                <View key={d.id} style={{ width: CARD_WIDTH }}>
-                  <DoctorCard
-                    doctor={d}
-                    onPress={() => navigation.navigate('DoctorDetail', { doctorId: d.id })}
-                  />
-                </View>
-              ))}
-            </ScrollView>
-          )}
-        </View>
-
-        {/* --------------------------- Live bed status -------------------------- */}
-        <View style={styles.section}>
-          <SectionHeader
-            title="Live Bed Availability"
-            subtitle="Hospital status near you"
-            actionLabel="Refresh"
-            onAction={load}
-          />
-          {beds.length === 0 ? (
-            <Card>
-              <View style={styles.bedEmpty}>
-                <Icon name="bed" size={18} color={colors.textMuted} />
-                <Text style={[typography.small, { textAlign: 'center' }]}>
-                  No live ward data available yet.
-                </Text>
-              </View>
-            </Card>
-          ) : (
-            beds.map(bed => (
-              <Card key={bed.id} style={{ marginBottom: spacing.md }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={typography.h4} numberOfLines={1}>
-                    {bed.hospitalName}
+        {/* -------------------------------- Stats ------------------------------- */}
+        <View style={[styles.section, { marginTop: spacing.xl }]}>
+          <View style={styles.statsRow}>
+            {[
+              { icon: 'clock' as IconName, value: '24/7', label: 'Available now' },
+              { icon: 'users' as IconName, value: '50+', label: 'Certified staff' },
+              { icon: 'award' as IconName, value: '4.9', label: 'Average rating' },
+            ].map(s => (
+              <Card key={s.label} style={styles.statCard} padded={false}>
+                <View style={{ padding: spacing.sm, alignItems: 'center' }}>
+                  <View style={styles.statIcon}>
+                    <Icon name={s.icon} size={14} color={colors.primary} />
+                  </View>
+                  <Text style={styles.statValue}>{s.value}</Text>
+                  <Text style={[typography.caption, { textAlign: 'center' }]} numberOfLines={1}>
+                    {s.label}
                   </Text>
-                  <Badge label="Live" tone="danger" icon="activity" />
                 </View>
-                <View style={styles.bedRow}>
-                  {[
-                    { label: 'General', v: bed.availableGeneralBeds ?? 0 },
-                    { label: 'ICU', v: bed.availableIcuBeds ?? 0 },
-                    { label: 'Oxygen', v: bed.availableOxygenBeds ?? 0 },
-                  ].map(b => (
-                    <View key={b.label} style={styles.bedChip}>
-                      <Text style={styles.bedValue}>{b.v}</Text>
-                      <Text style={typography.caption}>{b.label}</Text>
-                    </View>
-                  ))}
-                </View>
-              </Card>
-            ))
-          )}
-        </View>
-
-        {/* ------------------------------ How it works -------------------------- */}
-        <View style={styles.section}>
-          <SectionHeader title="How SloveCare Works" subtitle="4 quick steps to doorstep care" />
-          <View style={{ gap: spacing.md }}>
-            {STEPS.map(step => (
-              <Card key={step.no} style={styles.stepCard}>
-                <View style={styles.stepIcon}>
-                  <Icon name={step.icon} size={16} color={colors.blue} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={typography.smallMedium}>{step.title}</Text>
-                  <Text style={[typography.caption, { marginTop: 2 }]}>{step.text}</Text>
-                </View>
-                <Text style={styles.stepNo}>{step.no}</Text>
               </Card>
             ))}
           </View>
+        </View>
+
+        {/* ------------------------ How it works (dropdown) ------------------ */}
+        <View style={styles.section}>
+          <HowItWorksCard />
         </View>
 
         {!isLoggedIn ? (
@@ -562,6 +638,69 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  dietCard: { borderRadius: 14 },
+  dietInner: { padding: spacing.md, gap: 6 },
+  dietIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  dietTitle: { ...typography.h4, color: colors.textInverse },
+  dietSub: { ...typography.caption, color: 'rgba(255,255,255,0.9)', lineHeight: 15 },
+  dietCurrent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  dietCurrentTitle: { ...typography.smallMedium, color: colors.textInverse },
+  dietCurrentSub: { ...typography.caption, color: 'rgba(255,255,255,0.8)' },
+  dietCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    /* Near-white pill — rich gradient par sabse zyada pop. `#FFFFFF` nahi:
+       dark mode me wo DARK.card bana deta (theme ka white→surface rule). */
+    backgroundColor: colors.ctaBg,
+    borderRadius: radius.sm,
+    height: 40,
+    marginTop: spacing.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(11, 27, 46, 0.10)',
+  },
+  dietCtaText: { ...typography.button, color: colors.violetInk, fontSize: 13.5 },
+  pastPlanCard: {
+    width: 168,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    gap: 4,
+    ...shadow.card,
+  },
+  pastPlanIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
   statsRow: { flexDirection: 'row', gap: spacing.sm },
   statCard: { flex: 1 },
   statIcon: {
@@ -594,26 +733,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bedEmpty: { alignItems: 'center', gap: 8, paddingVertical: spacing.sm },
-  bedRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  bedChip: {
-    flex: 1,
-    alignItems: 'center',
-    backgroundColor: colors.cardMuted,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  bedValue: { ...typography.price, color: colors.primary, fontSize: 16 },
-  stepCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  stepIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.sm,
-    backgroundColor: '#E8F0FE',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepNo: { fontSize: 17, fontWeight: '800', color: colors.border },
+  /* Doctors grid — 2 columns, har card CARD_WIDTH ka */
+  doctorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP },
+  doctorGridItem: { width: CARD_WIDTH },
 });

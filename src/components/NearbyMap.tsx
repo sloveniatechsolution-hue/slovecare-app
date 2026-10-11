@@ -14,6 +14,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -25,7 +26,7 @@ import type {
   LngLatBounds,
   StyleSpecification,
 } from '@maplibre/maplibre-react-native';
-import { staffLabel, visitFee, VerificationBadge } from './DoctorCard';
+import { staffLabel, visitFee, VerificationBadge, photoUrl, initialsOf } from './DoctorCard';
 import Icon, { IconName } from './Icon';
 import { AppButton, Chip, Loader, Rating } from './UI';
 import api, { Doctor, VendorType } from '../api/api';
@@ -91,9 +92,11 @@ const RADIUS_KM = 25;
 export interface NearbyMapProps {
   /** Marker / card par tap → doctor detail screen kholega. */
   onSelect: (provider: Doctor) => void;
+  /** Filter chip change — parent (HomeScreen) ko taaki "Available for Booking" sync ho. */
+  onFilterChange?: (type: FilterKey) => void;
 }
 
-export default function NearbyMap({ onSelect }: NearbyMapProps): React.JSX.Element {
+export default function NearbyMap({ onSelect, onFilterChange }: NearbyMapProps): React.JSX.Element {
   const [filter, setFilter] = useState<FilterKey>('doctor');
   const [providers, setProviders] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -260,7 +263,12 @@ export default function NearbyMap({ onSelect }: NearbyMapProps): React.JSX.Eleme
             label={f.label}
             icon={f.icon}
             active={filter === f.key}
-            onPress={() => filter !== f.key && setFilter(f.key)}
+            onPress={() => {
+              if (filter !== f.key) {
+                setFilter(f.key);
+                onFilterChange?.(f.key);
+              }
+            }}
           />
         ))}
       </View>
@@ -333,23 +341,30 @@ export default function NearbyMap({ onSelect }: NearbyMapProps): React.JSX.Eleme
               Map view appears after the app rebuild — showing the same nearby list.
             </Text>
           </View>
-          {withCoords.slice(0, 4).map(p => (
-            <Pressable key={p.id} style={styles.fallbackRow} onPress={() => onSelect(p)}>
-              <View style={styles.fallbackIcon}>
-                <Icon name="stethoscope" size={15} color={colors.blue} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={typography.smallMedium} numberOfLines={1}>
-                  {p.name}
-                </Text>
-                <Text style={typography.caption} numberOfLines={1}>
-                  {staffLabel(p)}
-                  {typeof p.calculatedDistance === 'number' ? ` • ${p.calculatedDistance} km` : ''}
-                </Text>
-              </View>
-              <Icon name="chevron-right" size={16} color={colors.textMuted} />
-            </Pressable>
-          ))}
+          {withCoords.slice(0, 4).map(p => {
+            const photo = photoUrl(p.avatar);
+            return (
+              <Pressable key={p.id} style={styles.fallbackRow} onPress={() => onSelect(p)}>
+                <View style={styles.fallbackIcon}>
+                  {photo ? (
+                    <Image source={{ uri: photo }} style={styles.fallbackPhoto} resizeMode="cover" />
+                  ) : (
+                    <Icon name="stethoscope" size={15} color={colors.blue} />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={typography.smallMedium} numberOfLines={1}>
+                    {p.name}
+                  </Text>
+                  <Text style={typography.caption} numberOfLines={1}>
+                    {staffLabel(p)}
+                    {typeof p.calculatedDistance === 'number' ? ` • ${p.calculatedDistance} km` : ''}
+                  </Text>
+                </View>
+                <Icon name="chevron-right" size={16} color={colors.textMuted} />
+              </Pressable>
+            );
+          })}
         </View>
       )}
 
@@ -357,6 +372,25 @@ export default function NearbyMap({ onSelect }: NearbyMapProps): React.JSX.Eleme
       {selected ? (
         <View style={styles.providerCard}>
           <View style={styles.providerTop}>
+            <View style={styles.providerAvatar}>
+              {(() => {
+                const photo = photoUrl(selected.avatar);
+                if (photo) {
+                  return (
+                    <Image
+                      source={{ uri: photo }}
+                      style={styles.providerPhoto}
+                      resizeMode="cover"
+                    />
+                  );
+                }
+                return (
+                  <View style={[styles.providerPhoto, styles.initialsBox]}>
+                    <Text style={styles.initialsText}>{initialsOf(selected.name) || '?'}</Text>
+                  </View>
+                );
+              })()}
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={typography.h4} numberOfLines={1}>
                 {selected.name}
@@ -430,13 +464,15 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   fallbackIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    overflow: 'hidden',
     backgroundColor: '#EAF1FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  fallbackPhoto: { width: '100%', height: '100%' },
   pin: {
     width: 32,
     height: 32,
@@ -487,6 +523,16 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   providerTop: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  providerAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.primaryLight,
+  },
+  providerPhoto: { width: '100%', height: '100%' },
+  initialsBox: { alignItems: 'center', justifyContent: 'center' },
+  initialsText: { ...typography.h4, color: colors.primaryDark },
   providerMeta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.lg },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   providerActions: { flexDirection: 'row', gap: spacing.sm },

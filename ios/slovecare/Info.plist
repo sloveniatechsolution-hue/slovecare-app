@@ -38,6 +38,11 @@
 	<string>SloveCare uses your location to show doctors, labs and care staff near you, and to sort them by distance.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>SlopeCare needs access to your photos so you can set a profile picture.</string>
+	<!-- Slota AI voice — mic se sunne (speech-to-text) ke liye. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>SloveCare uses the microphone so you can ask Slota AI questions with your voice instead of typing.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>SloveCare converts your voice into text (using Apple's speech recognition) so Slota AI can understand your question.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>SlopeCare needs camera access so you can take a profile picture.</string>
 	<key>UILaunchStoryboardName</key>

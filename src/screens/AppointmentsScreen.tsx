@@ -3,14 +3,18 @@
  * Backend: GET /auth/user/dashboard-data, PATCH /bookings/:id/status.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AppHeader from '../components/AppHeader';
 import Icon, { IconName } from '../components/Icon';
+import ReviewSheet from '../components/ReviewSheet';
+import BookingDetailsModal from '../components/BookingDetailsModal';
 import { AppButton, Badge, Card, EmptyState, ErrorState, Loader, Screen } from '../components/UI';
-import api, { Booking, bookingTime } from '../api/api';
+import api, { ApiError, Booking, bookingTime } from '../api/api';
+import { consultationModeOf } from '../consultation/types';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from '../navigation/types';
 
@@ -45,6 +49,8 @@ const SERVICE_ICON: Record<string, IconName> = {
   home_visit: 'home',
   online_consultation: 'video',
   online: 'video',
+  video_consultation: 'video',
+  chat_consultation: 'message-circle',
   clinic_visit: 'building',
   doctor: 'stethoscope',
   lab_test: 'flask',
@@ -109,32 +115,107 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
   const [filter, setFilter] = useState<Filter>('upcoming');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** Guest ya session khatam — appointments ke liye login chahiye. */
+  const [needsLogin, setNeedsLogin] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  /** Jis provider ko patient ne already review de diya — un par button na dikhe. */
+  const [reviewedVendors, setReviewedVendors] = useState<Record<string, boolean>>({});
+  /** Jis booking ke liye review sheet khuli hai (completed visits). */
+  const [reviewTarget, setReviewTarget] = useState<{
+    vendorId: string;
+    vendorName: string;
+    bookingId: string;
+  } | null>(null);
+  /** Jis booking ka details modal khula hai. */
+  const [detailsBooking, setDetailsBooking] = useState<Booking | null>(null);
+  /** Race guard — purani (stale) request ka result screen par na aa jaye. */
+  const loadIdRef = useRef(0);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  /**
+   * Mere reviews — completed booking ke provider ke naam nikaal ke rakh lete
+   * hain taaki "Review" button dobara na dikhe (backend dobara review allow
+   * nahi karta).
+   */
+  const loadMyReviews = useCallback(async () => {
+    if (!user) {
+      setReviewedVendors({});
+      return;
+    }
     try {
-      if (user) {
-        const dashboard = await api.auth.dashboard().catch(() => null);
-        if (dashboard) {
-          setBookings(dashboard.bookings);
-          setLoading(false);
-          return;
+      const mine = await api.reviews.mine();
+      const map: Record<string, boolean> = {};
+      mine.forEach(review => {
+        if (review.vendorId) {
+          map[review.vendorId] = true;
         }
-      }
-      const list = await api.bookings.list({ userId: user?.id });
-      setBookings(list);
-    } catch (e) {
-      setError((e as Error).message || 'Could not load appointments.');
-    } finally {
-      setLoading(false);
+      });
+      setReviewedVendors(map);
+    } catch {
+      /* Review list na aaye to button rehne do — backend hi rok dega. */
     }
   }, [user]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const load = useCallback(async () => {
+    const loadId = ++loadIdRef.current;
+    setLoading(true);
+    setError(null);
+    setNeedsLogin(false);
+    try {
+      const dashboard = await api.auth.dashboard();
+      if (loadIdRef.current !== loadId) {
+        return;
+      }
+      setBookings(dashboard?.bookings ?? []);
+      return;
+    } catch (e) {
+      const status = (e as ApiError)?.statusCode;
+
+      /* Token missing/expired (401/403) ya guest — seedha backend ka raw
+         "Access denied. Bearer token missing." mat dikhao, login maango. */
+      if (!user || status === 401 || status === 403) {
+        if (loadIdRef.current !== loadId) {
+          return;
+        }
+        setBookings([]);
+        setNeedsLogin(true);
+        return;
+      }
+
+      /* Dashboard fail hone par GET /bookings (token ke saath) fallback. */
+      try {
+        const list = await api.bookings.list({ userId: user?.id });
+        if (loadIdRef.current !== loadId) {
+          return;
+        }
+        setBookings(list);
+        return;
+      } catch (fallbackError) {
+        if (loadIdRef.current !== loadId) {
+          return;
+        }
+        const failure = (fallbackError ?? e) as ApiError;
+        if (!user || failure?.statusCode === 401 || failure?.statusCode === 403) {
+          setBookings([]);
+          setNeedsLogin(true);
+          return;
+        }
+        setError(failure?.message || 'Could not load appointments.');
+      }
+    } finally {
+      if (loadIdRef.current === loadId) {
+        setLoading(false);
+      }
+    }
+  }, [user]);
+
+  /* Mount, focus (login/booking ke baad wapas aane par) aur user change —
+     teeno par refresh. */
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      loadMyReviews();
+    }, [load, loadMyReviews]),
+  );
 
   const cancel = (booking: Booking) => {
     Alert.alert('Cancel appointment?', `${booking.serviceName} on ${booking.date} will be cancelled.`, [
@@ -191,7 +272,10 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
         subtitle={`${bookings.length} total booking${bookings.length === 1 ? '' : 's'}`}
         onBack={() => navigation.goBack()}
         rightIcon="refresh"
-        onRightPress={load}
+        onRightPress={() => {
+          load();
+          loadMyReviews();
+        }}
       />
 
       {/* Filters */}
@@ -211,6 +295,14 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
 
       {loading && bookings.length === 0 ? (
         <Loader label="Loading appointments…" />
+      ) : needsLogin ? (
+        <EmptyState
+          icon="user"
+          title="Sign in to see appointments"
+          subtitle="Your bookings are tied to your account. Sign in to view, track and cancel them."
+          actionLabel="Sign In / Register"
+          onAction={() => navigation.navigate('Auth')}
+        />
       ) : error && bookings.length === 0 ? (
         <ErrorState message={error} onRetry={load} />
       ) : (
@@ -225,7 +317,7 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
             <EmptyState
               icon="calendar"
               title="No appointments yet"
-              subtitle="Book a doctor, care taker, lab test or nursing visit — har booking yahan dikhegi."
+              subtitle="Book a doctor, care taker, lab test or nursing visit — every booking shows up here."
               actionLabel="Find Doctors"
               onAction={() => navigation.navigate('Main', { screen: 'Doctors' })}
             />
@@ -234,7 +326,15 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
             const cancellable = ['new', 'upcoming', 'pending', 'confirmed'].includes(item.status);
             const isOnline =
               item.serviceType === 'online' || item.serviceType === 'online_consultation';
-            const joinable = isOnline && UPCOMING_STATUSES.includes(item.status);
+            /* Naye video/chat consultation bookings — seedha apne rooms. */
+            const consultationMode = consultationModeOf(item.serviceType);
+            const joinable =
+              (isOnline || consultationMode !== null) && UPCOMING_STATUSES.includes(item.status);
+            /* Completed visit par hi review — aur jahan abhi tak na diya ho. */
+            const canReview =
+              item.status === 'completed' &&
+              Boolean(item.vendorId) &&
+              !reviewedVendors[item.vendorId];
             return (
               <Card>
                 <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>
@@ -292,19 +392,49 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
                 ) : null}
 
                 <View style={styles.actions}>
-                  {joinable ? (
+                  {canReview ? (
                     <AppButton
-                      label="Join Consultation"
-                      icon="video"
+                      label="Review"
+                      icon="star"
+                      variant="ghost"
                       size="sm"
                       full={false}
                       style={{ flex: 1 }}
                       onPress={() =>
-                        navigation.navigate('Consultation', {
+                        setReviewTarget({
+                          vendorId: item.vendorId,
+                          vendorName: item.doctorName || item.vendorName,
                           bookingId: item.id,
-                          patientName: item.patientName,
                         })
                       }
+                    />
+                  ) : null}
+                  {joinable ? (
+                    <AppButton
+                      label={
+                        consultationMode === 'chat'
+                          ? 'Open Chat'
+                          : 'Join Video Call'
+                      }
+                      icon={consultationMode === 'chat' ? 'message-circle' : 'video'}
+                      size="sm"
+                      full={false}
+                      style={{ flex: 1 }}
+                      onPress={() => {
+                        if (consultationMode === 'chat') {
+                          navigation.navigate('ChatRoom', {
+                            bookingId: item.id,
+                            peerName: item.doctorName || item.vendorName,
+                          });
+                        } else {
+                          /* Video consultations (naye + purane online) — sab
+                             in-app WebRTC call. Koi third-party room nahi. */
+                          navigation.navigate('VideoCall', {
+                            bookingId: item.id,
+                            peerName: item.doctorName || item.vendorName,
+                          });
+                        }
+                      }}
                     />
                   ) : null}
                   <AppButton
@@ -314,12 +444,7 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
                     size="sm"
                     full={false}
                     style={{ flex: 1 }}
-                    onPress={() =>
-                      Alert.alert(
-                        `${item.serviceName}`,
-                        `Booking: ${item.id}\nStatus: ${item.status}${item.isDelayed ? ` (delayed ${item.delayMinutes} min)` : ''}\nDate: ${item.date} • ${bookingTime(item)}\nPatient: ${item.patientName}\nAmount: ₹${item.amount}\nAddress: ${item.customer?.address ?? '—'}`,
-                      )
-                    }
+                    onPress={() => setDetailsBooking(item)}
                   />
                   {cancellable ? (
                     <AppButton
@@ -338,6 +463,44 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
           }}
         />
       )}
+
+      {/* Completed visit ka review — yahin se, seedha. */}
+      <ReviewSheet
+        visible={Boolean(reviewTarget)}
+        vendorId={reviewTarget?.vendorId ?? ''}
+        vendorName={reviewTarget?.vendorName ?? ''}
+        bookingId={reviewTarget?.bookingId}
+        onClose={() => setReviewTarget(null)}
+        onSubmitted={() => {
+          setReviewTarget(null);
+          loadMyReviews();
+        }}
+      />
+
+      {/* Booking details — premium modal (native Alert ki jagah). */}
+      <BookingDetailsModal
+        visible={Boolean(detailsBooking)}
+        info={
+          detailsBooking
+            ? {
+                serviceName: detailsBooking.serviceName,
+                providerName: bookingCaption(detailsBooking),
+                serviceIcon: bookingIcon(detailsBooking),
+                serviceTypeLabel: detailsBooking.serviceType.replace(/_/g, ' '),
+                bookingId: detailsBooking.id,
+                status: detailsBooking.status,
+                isDelayed: detailsBooking.isDelayed,
+                delayMinutes: detailsBooking.delayMinutes,
+                date: detailsBooking.date,
+                time: bookingTime(detailsBooking),
+                patientName: detailsBooking.patientName,
+                amount: detailsBooking.amount,
+                address: detailsBooking.customer?.address,
+              }
+            : null
+        }
+        onClose={() => setDetailsBooking(null)}
+      />
     </Screen>
   );
 }

@@ -1,0 +1,40 @@
+diff --git a/node_modules/react-native-tts/android/build.gradle b/node_modules/react-native-tts/android/build.gradle
+index dbbe046..59d18f2 100644
+--- a/node_modules/react-native-tts/android/build.gradle
++++ b/node_modules/react-native-tts/android/build.gradle
+@@ -4,7 +4,9 @@ def safeExtGet(prop, fallback) {
+ 
+ buildscript {
+     repositories {
+-        jcenter()
++        // jcenter() Gradle 9 me hat gaya tha — warna build wahin fail hoti thi.
++        google()
++        mavenCentral()
+     }
+ 
+     dependencies {
+@@ -15,6 +17,8 @@ buildscript {
+ apply plugin: 'com.android.library'
+ 
+ android {
++    // AGP 8+ me manifest ka `package=` hata kar yahin namespace deni hoti hai.
++    namespace 'net.no_mad.tts'
+     compileSdkVersion safeExtGet('compileSdkVersion', 26)
+     buildToolsVersion safeExtGet('buildToolsVersion', '26.0.3')
+ 
+@@ -27,6 +31,7 @@ android {
+ }
+ 
+ repositories {
++    google()
+     mavenCentral()
+ }
+ 
+diff --git a/node_modules/react-native-tts/android/src/main/AndroidManifest.xml b/node_modules/react-native-tts/android/src/main/AndroidManifest.xml
+index ed0c0a6..a2f47b6 100644
+--- a/node_modules/react-native-tts/android/src/main/AndroidManifest.xml
++++ b/node_modules/react-native-tts/android/src/main/AndroidManifest.xml
+@@ -1,2 +1,2 @@
+-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="net.no_mad.tts">
++<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ </manifest>

@@ -281,7 +281,7 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
     <Screen>
       <AppHeader
         title="Prescription Reader"
-        subtitle="Photo → OCR → AI analysis"
+        subtitle="Prescription → AI analysis"
         onBack={() => navigation.goBack()}
         rightIcon={image ? 'refresh' : undefined}
         onRightPress={image ? resetAll : undefined}

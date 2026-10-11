@@ -1,5 +1,5 @@
 /**
- * Doctor / medical-staff card — Home (horizontal, compact 2-up) aur Doctors list dono me.
+ * Doctor / medical-staff card — Home (2-column grid, 2×2 = 4 cards) aur Doctors list dono me.
  * Poore card par tap karne se detail khulti hai — alag "Book Now" button nahi hai.
  */
 

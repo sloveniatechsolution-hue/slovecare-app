@@ -53,13 +53,13 @@ export default function LabReportsScreen({ navigation }: Props): React.JSX.Eleme
   const openFile = useCallback((url: string | undefined, title: string) => {
     if (url && /^https?:\/\//i.test(url)) {
       Linking.openURL(url).catch(() =>
-        Alert.alert('Could not open', 'File link open nahi ho payi — thodi der baad try karein.'),
+        Alert.alert('Could not open', 'The file link could not be opened — please try again in a few minutes.'),
       );
       return;
     }
     Alert.alert(
       title,
-      'Ye file abhi provider ki taraf se upload nahi hui hai — ready hote hi yahan aa jayegi.',
+      'This file has not been uploaded by the provider yet — it will appear here as soon as it is ready.',
     );
   }, []);
 

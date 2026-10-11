@@ -45,16 +45,24 @@ const LIGHT = {
   success: '#16A34A',
   successLight: '#E9F8EF',
 
-  /* Text */
+  /* Text — headings ke baaki labels par bhi achhi contrast chahiye */
   text: '#0B1B2E',
-  textSecondary: '#566784',
-  textMuted: '#8A97AB',
+  textSecondary: '#3F5372',
+  textMuted: '#4F6180',
   textInverse: '#FFFFFF',
 
   /* Surfaces */
   background: '#F5F7FB',
   card: '#FFFFFF',
   cardMuted: '#F7F9FC',
+  /**
+   * Gradient card ka CTA pill — dono modes me same near-white rehta hai.
+   * Seedha '#FFFFFF' istemal mat karo: dark mode me `themedStyleColor` usko
+   * `DARK.card` (ink) bana deta hai, jo rich gradient par dooba hua dikhta hai.
+   * Yeh token dono palettes me identical hai, isliye DARK_BY_LIGHT khud usse
+   * wahi rehne deta hai.
+   */
+  ctaBg: '#F8FAFD',
   border: '#E7ECF4',
   borderStrong: '#D5DEEB',
   overlay: 'rgba(7, 27, 54, 0.55)',
@@ -67,6 +75,8 @@ const LIGHT = {
 
   /* Extra accents — violet violet, blue info chips, warning text */
   violet: '#7C3AED',
+  /** White pill ke upar violet text/icon — hamesha dark rehta hai (high contrast). */
+  violetInk: '#6D28D9',
   violetSoft: '#F1ECFE',
   infoLight: '#EAF1FF',
   warningText: '#B45309',
@@ -115,16 +125,17 @@ const DARK: Palette = {
   success: '#4ADE80',
   successLight: '#0F2A1E',
 
-  /* Text */
+  /* Text — dark surfaces par headings/labels clearly readable hone chahiye */
   text: '#E9F1FA',
-  textSecondary: '#A3B3C9',
-  textMuted: '#7A8AA3',
+  textSecondary: '#C3D2E6',
+  textMuted: '#A2B3CC',
   textInverse: '#FFFFFF',
 
   /* Surfaces — 3 layers: background < card < cardMuted, hairline borders */
   background: '#070C14',
   card: '#0F1725',
   cardMuted: '#16202F',
+  ctaBg: '#F8FAFD',
   border: '#1E2A3C',
   borderStrong: '#2C3D55',
   overlay: 'rgba(3, 7, 14, 0.74)',
@@ -137,6 +148,7 @@ const DARK: Palette = {
 
   /* Extra accents */
   violet: '#A78BFA',
+  violetInk: '#6D28D9',
   violetSoft: '#2A2140',
   infoLight: '#13233B',
   warningText: '#FBBF24',
@@ -269,11 +281,55 @@ const EXTRA_DARK: Record<string, string> = {
 };
 
 /**
+ * Text-token swap (mode ke hisaab se). Agar kisi screen ka text token galat
+ * mode ki value le aata hai (ya mapping se dim value ban jaati hai) toh yeh
+ * use padhne layak sahi-mode ke token me badal deta hai.
+ *
+ * Sirf exact palette tokens badle jaate hain — isliye brand buttons ka white
+ * text (`textInverse`) aur saare backgrounds bilkul nahi chalte.
+ */
+const DARK_TEXT_SWAPS: Record<string, string> = {
+  /* light-mode dim text → dark mode me bright ink text */
+  '#0B1B2E': DARK.text,
+  '#3F5372': DARK.textSecondary,
+  '#566784': DARK.textSecondary,
+  '#6B7C96': DARK.textMuted,
+  '#8A97AB': DARK.textMuted,
+  '#5A6E8C': DARK.textMuted,
+  /* purani dark tokens jo ab brightened hain */
+  '#A3B3C9': DARK.textSecondary,
+  '#7A8AA3': DARK.textMuted,
+};
+
+const LIGHT_TEXT_SWAPS: Record<string, string> = {
+  /* dark-mode bright text → light mode me dark ink text */
+  '#E9F1FA': LIGHT.text,
+  '#DCE9FA': LIGHT.text,
+  '#C3D2E6': LIGHT.textSecondary,
+  '#A3B3C9': LIGHT.textSecondary,
+  '#B6CBE6': LIGHT.textSecondary,
+  '#A2B3CC': LIGHT.textMuted,
+  '#7A8AA3': LIGHT.textMuted,
+  /* purani light tokens jo ab darkened hain */
+  '#566784': LIGHT.textSecondary,
+  '#8A97AB': LIGHT.textMuted,
+  '#5A6E8C': LIGHT.textMuted,
+};
+
+/**
  * Light hex → dark ink. Style values module load par banti hain, is liye
  * property ek getter ban jaata hai aur yeh function har read par chalta hai.
  */
 function themedStyleColor(value: unknown, property: string): unknown {
-  if (!themeIsDark || typeof value !== 'string') return value;
+  if (typeof value !== 'string') return value;
+
+  /* Wrong-mode text token → us mode ka readable text. */
+  if (property === 'color') {
+    const swapped = (themeIsDark ? DARK_TEXT_SWAPS : LIGHT_TEXT_SWAPS)[value.toUpperCase()];
+    if (swapped) return swapped;
+  }
+
+  if (!themeIsDark) return value;
 
   /* White sheets (near-opaque) dark me ink sheets ban jaate hain. */
   const white = value.match(/^rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*([0-9.]+)\s*\)$/i);
@@ -324,8 +380,29 @@ function fallbackInk(value: string, property: string): string {
 }
 
 // StyleSheet styles ek baar module load par banti hain. Un colour values ko
-// dynamic getter bana dete hain taaki theme switch par har screen update ho —
-// bina kisi screen ko remount kiye.
+// dynamic getter bana dete hain taaki theme switch par har screen update ho.
+//
+// Lekin sirf getter kaafi NAHI hai: React Native ka style diff
+// (`ReactNativeAttributePayload.diffNestedProperty`) `prevProp === nextProp`
+// par foran bail out kar deta hai. Agar `style={typography.h3}` jaisa stable
+// object reference diya jaaye toh RN dobara diff hi nahi karta aur purani
+// theme ki colour native view par bani rehti hai (isliye headings dark mode
+// me bhi light-mode colour dikhate the). Isliye har access par EK NAYA object
+// milta hai — reference badalta hai, diff chalta hai, getters dobara padhe
+// jaate hain.
+function dynamicStyleMap<T extends Record<string, unknown>>(source: T): T {
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(source)) {
+    const value = source[key] as Record<string, unknown>;
+    Object.defineProperty(out, key, {
+      enumerable: true,
+      configurable: true,
+      get: () => ({ ...value }),
+    });
+  }
+  return out as T;
+}
+
 const dynamicStyleSheet = StyleSheet as unknown as {
   create: (styles: Record<string, Record<string, unknown>>) => Record<string, Record<string, unknown>>;
 };
@@ -339,13 +416,14 @@ dynamicStyleSheet.create = styles => {
       }
     }
   }
-  return originalCreate(styles);
+  originalCreate(styles); // DEV me freeze + validation
+  return dynamicStyleMap(styles);
 };
 
 /* ----------------------------------------------------------------- gradients */
 
 /** Named gradients — hero cards, buttons, tab pill aur background wash ke liye. */
-export const gradients: Record<'brand' | 'hero' | 'ink' | 'success' | 'warning' | 'danger' | 'info' | 'wash' | 'authWash', string[]> = {
+export const gradients: Record<'brand' | 'hero' | 'ink' | 'diet' | 'success' | 'warning' | 'danger' | 'info' | 'wash' | 'authWash', string[]> = {
   /** Teal → azure — brand signature (tab pill, primary buttons). */
   get brand(): string[] { return themeIsDark ? ['#2DD4BF', '#3B82F6'] : ['#0BA39C', '#1C7EE0']; },
   /** Deep ink → teal — dashboard/profile hero headers. */
@@ -356,6 +434,12 @@ export const gradients: Record<'brand' | 'hero' | 'ink' | 'success' | 'warning' 
   get warning(): string[] { return themeIsDark ? ['#FBBF24', '#D97706'] : ['#FBBF24', '#F59E0B']; },
   get danger(): string[] { return themeIsDark ? ['#FB7185', '#E11D48'] : ['#FB7185', '#E11D48']; },
   get info(): string[] { return themeIsDark ? ['#60A5FA', '#2563EB'] : ['#60A5FA', '#2563EB']; },
+  /**
+   * Diet planner card — light me violet→teal, dark me DEEP violet→deep teal.
+   * Dark mode me `colors.violet` (#A78BFA) text ke liye bright hota hai, par
+   * surface/gradient ke liye washed-out padta tha — isliye yahan alag stops.
+   */
+  get diet(): string[] { return themeIsDark ? ['#5B21B6', '#0F766E'] : ['#7C3AED', '#0BA39C']; },
   /** Soft wash — splash/auth background (3 stops). */
   get wash(): string[] { return themeIsDark ? [DARK.washTop, DARK.washMid, DARK.washBottom] : ['#E8F4FB', '#F7FBFE', '#FFFFFF']; },
   /** Auth wash — splash jaisa hi, bas top par halka teal tint. */
@@ -399,9 +483,13 @@ const fontFamilyMedium = Platform.select({
 
 /**
  * `color` ek getter hai — spreading (`{...typography.h3}`) ya direct use hamesha
- * current palette padhta hai, is liye dark mode me text sahi rehta hai.
+ * current palette padhta hai.
+ *
+ * `dynamicStyleMap` se har access par naya object milta hai, warna RN ka style
+ * diff stable reference par bail out kar deta aur heading ka rang theme switch
+ * par update hi nahi hota.
  */
-export const typography: Record<string, TextStyle> = {
+const typographySource: Record<string, TextStyle> = {
   h1: { fontFamily, fontSize: 26, lineHeight: 32, fontWeight: '800', get color() { return colors.text; }, letterSpacing: -0.8 },
   h2: { fontFamily, fontSize: 22, lineHeight: 28, fontWeight: '800', get color() { return colors.text; }, letterSpacing: -0.5 },
   h3: { fontFamily, fontSize: 18, lineHeight: 24, fontWeight: '800', get color() { return colors.text; }, letterSpacing: -0.3 },
@@ -427,9 +515,11 @@ export const typography: Record<string, TextStyle> = {
   lead: { fontFamily, fontSize: 14.5, lineHeight: 21, fontWeight: '500', get color() { return colors.textSecondary; } },
 };
 
+export const typography = dynamicStyleMap(typographySource);
+
 /* ------------------------------------------------------------------ shadows */
 
-export const shadow = {
+const shadowSource: Record<string, ViewStyle> = {
   sm: Platform.select({
     android: { elevation: 1 },
     ios: {
@@ -482,5 +572,7 @@ export const shadow = {
     default: {},
   }) as ViewStyle,
 };
+
+export const shadow = dynamicStyleMap(shadowSource);
 
 export default { colors, gradients, spacing, radius, typography, shadow };

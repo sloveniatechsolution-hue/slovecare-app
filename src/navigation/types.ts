@@ -1,5 +1,5 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
-import { LabTest, Medicine } from '../api/api';
+import { DietPlan, LabTest, Medicine } from '../api/api';
 
 /** Staff type — Doctors tab ke filter/chips ke liye. */
 export type StaffType = 'doctor' | 'compounder' | 'nurse' | 'caretaker' | 'lab';
@@ -23,8 +23,22 @@ export type RootStackParamList = {
   Services: undefined;
   /** Prescription Reader — photo → PaddleOCR → Gemini analysis. */
   PrescriptionReader: undefined;
-  /** Online consultation room (Jitsi) — provider ke saath video visit. */
-  Consultation: { bookingId: string; patientName?: string };
+  /** AI Weekly Diet Planner — multi-step form → Gemini 7-day plan. */
+  DietPlanner: undefined;
+  /**
+   * Diet plan results — planId = server se load karo, plan = generate ke
+   * baad seedha render (dubara fetch nahi).
+   */
+  DietPlanResult: { planId?: string; plan?: DietPlan } | undefined;
+  /* ---------------- video/chat consultation (WebRTC + Socket.IO) ------------- */
+  /** Consultation booking + Razorpay payment (mode video | chat). */
+  ConsultationBook: { doctorId: string; mode: 'video' | 'chat' };
+  /** Meri consultations list — join buttons ke saath. */
+  MyConsultations: undefined;
+  /** WebRTC video call room — bookingId = authorized room. */
+  VideoCall: { bookingId: string; peerName?: string };
+  /** Paid live chat room — server-persisted messages. */
+  ChatRoom: { bookingId: string; peerName?: string };
 };
 
 export type TabParamList = {

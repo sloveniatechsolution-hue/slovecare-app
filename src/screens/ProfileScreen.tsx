@@ -67,6 +67,12 @@ export default function ProfileScreen(): React.JSX.Element {
       onPress: () => navigation.navigate('Appointments'),
     },
     {
+      icon: 'video',
+      label: 'My Consultations',
+      sub: 'Video calls & live chat with doctors',
+      onPress: () => navigation.navigate('MyConsultations'),
+    },
+    {
       icon: 'heart-pulse',
       label: 'Health Profile',
       sub: user?.isProfileComplete ? 'Completed' : 'Pending — please complete',
@@ -251,7 +257,7 @@ export default function ProfileScreen(): React.JSX.Element {
               <View style={{ flex: 1 }}>
                 <Text style={typography.h4}>Dark Mode</Text>
                 <Text style={[typography.small, { marginTop: 2 }]}>
-                  {dark ? 'On — screen dark theme me hai' : 'Off — screen light theme me hai'}
+                  {dark ? 'On — dark theme is active' : 'Off — light theme is active'}
                 </Text>
               </View>
               <Switch
@@ -301,7 +307,8 @@ export default function ProfileScreen(): React.JSX.Element {
         ) : null}
 
         <Text style={[typography.caption, { textAlign: 'center', marginTop: spacing.xl }]}>
-          © {new Date().getFullYear()} SloveCare Healthcare Solutions Pvt. Ltd.
+          © {new Date().getFullYear()} SloveCare
+          {'\n'}Powered by Slovenia Tech Solutions Pvt. Ltd.
         </Text>
       </ScrollView>
     </Screen>
