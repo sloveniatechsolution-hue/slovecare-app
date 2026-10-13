@@ -9,6 +9,7 @@ import { apiOrigin, Doctor } from '../api/api';
 import Icon from './Icon';
 import { Badge } from './UI';
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
 export interface DoctorCardProps {
   doctor: Doctor;
@@ -150,6 +151,7 @@ export function DegreeVerifiedBadge({ doctor }: { doctor: Doctor }): React.JSX.E
 }
 
 export function DoctorCard({ doctor, onPress, variant = 'grid' }: DoctorCardProps): React.JSX.Element {
+  useThemePreference();
   const horizontal = variant === 'row';
   const fee = visitFee(doctor);
   const showRating = Number(doctor.rating) > 0;

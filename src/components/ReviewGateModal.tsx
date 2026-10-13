@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon, { IconName } from './Icon';
 import { AppButton } from './UI';
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
 export type ReviewGateKind = 'login' | 'already-reviewed' | 'visit-required';
 
@@ -60,6 +61,7 @@ export default function ReviewGateModal({
   onPrimary,
   onDismiss,
 }: ReviewGateModalProps): React.JSX.Element {
+  useThemePreference();
   const insets = useSafeAreaInsets();
   const copy = COPY[kind];
 

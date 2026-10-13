@@ -15,6 +15,7 @@ import React, { useRef, useState } from 'react';
 import { Animated, Easing, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import Icon, { IconName } from './Icon';
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Step = { no: string; icon: IconName; title: string; text: string };
 
@@ -38,6 +39,7 @@ export default function HowItWorksCard({
   title?: string;
   subtitle?: string;
 }): React.JSX.Element {
+  useThemePreference();
   const [open, setOpen] = useState(false);
   const [contentHeight, setContentHeight] = useState(0);
 

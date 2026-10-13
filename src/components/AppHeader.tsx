@@ -7,6 +7,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon, { IconName } from './Icon';
 import { colors, spacing, typography } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
 export function AppHeader({
   title,
@@ -23,6 +24,7 @@ export function AppHeader({
   onRightPress?: () => void;
   rightLabel?: string;
 }): React.JSX.Element {
+  useThemePreference();
   const insets = useSafeAreaInsets();
 
   return (

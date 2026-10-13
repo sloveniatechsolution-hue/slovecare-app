@@ -6,6 +6,7 @@
 import React from 'react';
 import Svg, { Circle, Line, Path, Polygon, Polyline, Rect } from 'react-native-svg';
 import { colors } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
 export type IconName =
   | 'home'
@@ -526,6 +527,7 @@ const ICONS: Record<IconName, React.ReactNode> = {
 };
 
 export function Icon({ name, size = 20, color = colors.text, strokeWidth = 2 }: IconProps): React.JSX.Element {
+  useThemePreference();
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
       {ICONS[name]}

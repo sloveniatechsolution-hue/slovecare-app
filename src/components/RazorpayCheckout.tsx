@@ -32,6 +32,7 @@ import {
 import WebView, { type WebViewMessageEvent, type WebViewProps } from 'react-native-webview';
 import Icon from './Icon';
 import { colors, spacing, typography } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
 export interface CheckoutOrder {
   keyId: string;
@@ -183,6 +184,7 @@ export default function RazorpayCheckout({
   onDismiss,
   onError,
 }: RazorpayCheckoutProps): React.JSX.Element | null {
+  useThemePreference();
   const [loadFailed, setLoadFailed] = useState(false);
   const [webKey, setWebKey] = useState(0);
   const retriesRef = useRef(0);

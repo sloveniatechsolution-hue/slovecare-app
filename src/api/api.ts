@@ -34,8 +34,8 @@ import type {
  *  2. `*.vercel.app`       → Vercel direct (fallback)
  */
 export const API_HOSTS = [
-  'https://api.slovecare.in',
-  'https://sloveniajanseva-backend.vercel.app',
+  'https://slovecarebackend.slovecare.in',
+  'https://slovecarebackend.slovecare.in',
 ] as const;
 
 /** Session me abhi kaam kar raha host (request() ise update karta hai). */
@@ -621,14 +621,14 @@ export interface CreateBookingPayload {
 export type PaymentOrderResult =
   | { requiresPayment: false; bookingId: string }
   | {
-      requiresPayment: true;
-      bookingId: string;
-      keyId: string;
-      orderId: string;
-      amount: number; // paise (Razorpay checkout unit)
-      currency: string;
-      amountRupees: number;
-    };
+    requiresPayment: true;
+    bookingId: string;
+    keyId: string;
+    orderId: string;
+    amount: number; // paise (Razorpay checkout unit)
+    currency: string;
+    amountRupees: number;
+  };
 
 /** Razorpay checkout success ke 3 signatures — backend verify ko jaate hain. */
 export interface PaymentSignature {
@@ -1080,9 +1080,9 @@ async function prescriptionRequest<T>(
         // Server ka message user-friendly hai (OCR/AI failure reasons).
         throw new ApiError(
           json?.message ||
-            (!res.ok
-              ? `Prescription service error (${res.status}). Please try again.`
-              : 'The prescription service returned an unexpected response. Please try again.'),
+          (!res.ok
+            ? `Prescription service error (${res.status}). Please try again.`
+            : 'The prescription service returned an unexpected response. Please try again.'),
           json?.statusCode || res.status,
         );
       }
@@ -1153,9 +1153,9 @@ async function dietRequest<T>(
       if (!res.ok || !json || json.success === false) {
         throw new ApiError(
           json?.message ||
-            (!res.ok
-              ? `Diet plan service error (${res.status}). Please try again.`
-              : 'The diet plan service returned an unexpected response. Please try again.'),
+          (!res.ok
+            ? `Diet plan service error (${res.status}). Please try again.`
+            : 'The diet plan service returned an unexpected response. Please try again.'),
           json?.statusCode || res.status,
         );
       }
@@ -1535,9 +1535,9 @@ export const api = {
             const serverMessage = json?.error || json?.message;
             throw new ApiError(
               serverMessage ||
-                (json
-                  ? 'AI assistant is busy right now. Please try again.'
-                  : `AI assistant returned an unexpected response (${res.status}). Please try again.`),
+              (json
+                ? 'AI assistant is busy right now. Please try again.'
+                : `AI assistant returned an unexpected response (${res.status}). Please try again.`),
               res.status,
             );
           }

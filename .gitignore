@@ -34,7 +34,6 @@ local.properties
 *.keystore
 *.jks
 !debug.keystore
-keystore.properties
 .kotlin/
 
 # node.js

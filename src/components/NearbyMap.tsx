@@ -32,6 +32,7 @@ import { AppButton, Chip, Loader, Rating } from './UI';
 import api, { Doctor, VendorType } from '../api/api';
 import { locationHelpAlert, requestLocation } from '../utils/location';
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
 type MapLibreModule = typeof import('@maplibre/maplibre-react-native');
 
@@ -97,6 +98,7 @@ export interface NearbyMapProps {
 }
 
 export default function NearbyMap({ onSelect, onFilterChange }: NearbyMapProps): React.JSX.Element {
+  useThemePreference();
   const [filter, setFilter] = useState<FilterKey>('doctor');
   const [providers, setProviders] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);

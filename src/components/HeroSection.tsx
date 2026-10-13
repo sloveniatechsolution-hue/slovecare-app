@@ -15,6 +15,7 @@ import { useIsFocused } from '@react-navigation/native';
 import Icon from './Icon';
 import { AppButton } from './UI';
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
 type HeroSectionProps = {
   onSosPress?: () => void;
@@ -25,6 +26,7 @@ export default function HeroSection({
   onSosPress,
   onCallPress,
 }: HeroSectionProps): React.JSX.Element {
+  useThemePreference();
   const videoRef = useRef<VideoRef>(null);
   const isFocused = useIsFocused();
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');

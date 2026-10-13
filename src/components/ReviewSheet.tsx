@@ -14,6 +14,7 @@ import Icon from './Icon';
 import { AppButton, TextField } from './UI';
 import api, { Review } from '../api/api';
 import { colors, radius, spacing, typography } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
 export interface ReviewSheetProps {
   visible: boolean;
@@ -36,6 +37,7 @@ export default function ReviewSheet({
   onClose,
   onSubmitted,
 }: ReviewSheetProps): React.JSX.Element {
+  useThemePreference();
   const insets = useSafeAreaInsets();
   const [starRating, setStarRating] = useState(0);
   const [reviewComment, setReviewComment] = useState('');

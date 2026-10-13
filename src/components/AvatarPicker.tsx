@@ -11,6 +11,7 @@ import { CameraOptions, ImageLibraryOptions, launchCamera, launchImageLibrary } 
 import Icon from './Icon';
 import api, { apiOrigin } from '../api/api';
 import { colors, shadow, typography } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
 /** Avatar URL ko absolute banao; dicebear (default) avatar ke liye undefined. */
 export function avatarImage(avatar?: string | null): string | undefined {
@@ -67,6 +68,7 @@ export default function AvatarPicker({
   onUploaded,
   style,
 }: AvatarPickerProps): React.JSX.Element {
+  useThemePreference();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
 
