@@ -92,12 +92,21 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace "com.slovecare"
+    // react-native-webrtc ships Java 8 bytecode and camera buffers. Explicit
+    // compatibility prevents device-specific crashes when getUserMedia starts.
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
     defaultConfig {
         applicationId "com.slovecare"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.0.1"
 
         // AGP 9.2/CMake 3.22 can omit the NDK C++ runtime from generated
         // React Native codegen link commands on Windows. Without this, release

@@ -23,6 +23,9 @@ const ACK_TIMEOUT_MS = 12000;
 
 class ConsultSocket {
   private socket: Socket | null = null;
+  /** JWT used for the active handshake. A socket authenticated with an older
+   * account must never be reused for a new user's consultation. */
+  private connectedToken: string | null = null;
   private activeUrl: string | null = null;
   private pending: Promise<Socket> | null = null;
   private status: ConsultSocketStatus = 'idle';
@@ -78,15 +81,29 @@ class ConsultSocket {
 
   /** Connected socket lazily banata hai (candidates me failover). */
   async connect(): Promise<Socket> {
-    if (this.socket?.connected) {
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error('Your sign-in session is missing. Please sign in again.');
+    }
+    if (this.socket?.connected && this.connectedToken === token) {
       return this.socket;
+    }
+    if (this.socket && this.connectedToken !== token) {
+      /* Login/account changed while the singleton socket was alive. Socket.IO
+         auth only runs during a handshake, so reconnect with the current JWT. */
+      this.socket.removeAllListeners();
+      this.socket.close();
+      this.socket = null;
+      this.activeUrl = null;
+      this.pending = null;
+      this.connectedToken = null;
     }
     if (this.pending) {
       return this.pending;
     }
 
     this.setStatus('connecting');
-    this.pending = this.tryCandidates()
+    this.pending = this.tryCandidates(token)
       .then(socket => {
         this.pending = null;
         return socket;
@@ -99,14 +116,15 @@ class ConsultSocket {
     return this.pending;
   }
 
-  private async tryCandidates(): Promise<Socket> {
+  private async tryCandidates(token: string): Promise<Socket> {
     const candidates = socketUrlCandidates();
     let lastError: Error | null = null;
 
     for (const url of candidates) {
       try {
-        const socket = await this.openOne(url);
+        const socket = await this.openOne(url, token);
         this.socket = socket;
+        this.connectedToken = token;
         this.activeUrl = url;
         this.wireLifecycle(socket);
         this.setStatus('connected');
@@ -118,7 +136,7 @@ class ConsultSocket {
     throw lastError ?? new Error('Realtime server is not reachable. Please check your connection.');
   }
 
-  private openOne(url: string): Promise<Socket> {
+  private openOne(url: string, token: string): Promise<Socket> {
     return new Promise<Socket>((resolve, reject) => {
       const socket = io(url, {
         path: SOCKET_PATH,
@@ -129,7 +147,7 @@ class ConsultSocket {
         reconnectionDelayMax: 8000,
         timeout: CONNECT_TIMEOUT_MS,
         /* JWT — server handshake par verify karta hai. */
-        auth: (cb: (data: { token: string | null }) => void) => cb({ token: getAuthToken() }),
+        auth: { token },
         /* Android Emulator / local dev me self-signed cert allowance nahi —
            production me wss:// hi use karein. */
         rejectUnauthorized: __DEV__ ? false : true,
@@ -227,6 +245,7 @@ class ConsultSocket {
     this.socket?.removeAllListeners();
     this.socket?.close();
     this.socket = null;
+    this.connectedToken = null;
     this.activeUrl = null;
     this.setStatus('idle');
   }

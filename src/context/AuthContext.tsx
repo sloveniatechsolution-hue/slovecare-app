@@ -27,12 +27,6 @@ interface AuthContextValue {
     email?: string;
     phone?: string;
     password?: string;
-    degree?: string;
-    selectedType?: string;
-    regNumber?: string;
-    regAuthority?: string;
-    qualification?: string;
-    labName?: string;
   }) => Promise<User>;
   logout: () => Promise<void>;
   /** Local user object update (health profile save hone ke baad) */

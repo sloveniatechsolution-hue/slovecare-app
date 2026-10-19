@@ -80,6 +80,21 @@ async function ensureMediaPermissions(): Promise<void> {
           : 'Microphone permission is required for video calls.',
     );
   }
+
+  /* Android 12+ par in-call-manager Bluetooth device list read karta hai.
+     Permission na ho to kuch OEM builds native SecurityException se process
+     crash kar dete hain. Bluetooth optional hai, isliye denial call ko block
+     nahi karta; speaker/camera call phir bhi chalti rahegi. */
+  if (Platform.Version >= 31) {
+    const bluetoothConnect = PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT;
+    if (bluetoothConnect) {
+      try {
+        await PermissionsAndroid.request(bluetoothConnect);
+      } catch {
+        /* Bluetooth headset unavailable; normal speaker route remains usable. */
+      }
+    }
+  }
 }
 
 /* ------------------------------ the session ------------------------------ */
@@ -238,6 +253,10 @@ export class VideoCallSession {
         this.setState('failed', err?.message || 'Could not start the call.');
         this.failCode = 'error';
       }
+      /* Permission/media may already be active when room authorization fails.
+         Release camera, microphone, audio route and socket retain before the
+         screen offers Retry; otherwise a failed join leaves a stale session. */
+      this.end(false, this.failCode, err?.message);
       throw error;
     }
   }

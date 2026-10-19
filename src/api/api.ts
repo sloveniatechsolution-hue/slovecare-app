@@ -1191,13 +1191,6 @@ export const api = {
       email?: string;
       phone?: string;
       password?: string;
-      /* Professional (doctor/lab) registration ke extra fields */
-      degree?: string;
-      selectedType?: string;
-      regNumber?: string;
-      regAuthority?: string;
-      qualification?: string;
-      labName?: string;
     }) {
       return request<AuthResult>('/auth/user/register', {
         method: 'POST',

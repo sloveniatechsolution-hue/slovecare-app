@@ -80,6 +80,21 @@ test('solid brand surfaces (badge/button) dark me bhi white icon ke saath rehte 
   expect(styles.badgeBlue.backgroundColor).toBe('#2563EB');
 });
 
+test('rgba palette surfaces bhi dono modes follow karti hain', () => {
+  const styles = StyleSheet.create({
+    scrim: { backgroundColor: colors.overlay },
+    floatingCard: { backgroundColor: colors.cardOverlay },
+  });
+
+  applyTheme('light');
+  expect(styles.scrim.backgroundColor).toBe('rgba(7, 27, 54, 0.55)');
+  expect(styles.floatingCard.backgroundColor).toBe('rgba(255, 255, 255, 0.90)');
+
+  applyTheme('dark');
+  expect(styles.scrim.backgroundColor).toBe('rgba(3, 7, 14, 0.74)');
+  expect(styles.floatingCard.backgroundColor).toBe('rgba(15, 23, 37, 0.94)');
+});
+
 test('gradient stops theme-aware hain', () => {
   applyTheme('light');
   expect(gradients.brand).toEqual(['#0BA39C', '#1C7EE0']);

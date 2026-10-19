@@ -88,12 +88,6 @@ export default function AuthScreen({ navigation }: Props): React.JSX.Element {
   const [email, setEmail] = useState('');  // Email (optional)
   const [phone, setPhone] = useState('');  // Mobile number (optional)
   const [regPassword, setRegPassword] = useState(''); // Password
-  const [degree, setDegree] = useState(''); // Degree (for doctors)
-  const [selectedType, setSelectedType] = useState('Doctor'); // Professional type
-  const [regNumber, setRegNumber] = useState(''); // Registration number
-  const [regAuthority, setRegAuthority] = useState(''); // Registration authority
-  const [qualification, setQualification] = useState(''); // Qualification
-  const [labName, setLabName] = useState(''); // Lab name (for lab type)
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -150,14 +144,6 @@ export default function AuthScreen({ navigation }: Props): React.JSX.Element {
       if (regPassword.length < 6) {
         next.regPassword = 'Minimum 6 characters';
       }
-      // Professional type validation
-      if (!selectedType) {
-        next.selectedType = 'Please select a professional type';
-      }
-      // Doctor-specific: degree is NOT required during signup (optional, can upload later)
-      // if (selectedType === 'Doctor' && !degree.trim()) {
-      //   next.degree = 'Degree is required for doctors';
-      // }
     }
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -188,12 +174,6 @@ export default function AuthScreen({ navigation }: Props): React.JSX.Element {
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
           password: regPassword,
-          degree: degree.trim() || undefined,
-          selectedType: selectedType,
-          regNumber: regNumber.trim() || undefined,
-          regAuthority: regAuthority.trim() || undefined,
-          qualification: qualification.trim() || undefined,
-          labName: labName.trim() || undefined,
         });
         navigateAfterAuth(user);
       }
@@ -289,16 +269,10 @@ export default function AuthScreen({ navigation }: Props): React.JSX.Element {
       setLoginView('password');
       setOtpSent(false);
       setOtp('');
-      setSelectedType('Doctor'); // Reset to default type
       setName('');
       setEmail('');
       setPhone('');
       setRegPassword('');
-      setDegree('');
-      setRegNumber('');
-      setRegAuthority('');
-      setQualification('');
-      setLabName('');
     }
   };
 
@@ -374,22 +348,6 @@ export default function AuthScreen({ navigation }: Props): React.JSX.Element {
           {/* Form card + social block */}
           <Animated.View style={formStyle}>
             <Card elevated style={styles.formCard}>
-              {/* Professional type selector for signup */}
-              <View style={styles.typeSelector}>
-                <Text style={styles.typeSelectorLabel}>Professional Type</Text>
-                <View style={styles.typeChips}>
-                  {['Doctor', 'Nurse', 'Compounder', 'Caretaker', 'Lab Care'].map((item, index) => (
-                    <Pressable
-                      key={index}
-                      onPress={() => setSelectedType(item)}
-                      style={[styles.typeChip, selectedType === item && styles.typeChipActive]}
-                    >
-                      <Text style={styles.typeChipText}>{item}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-
               {isPhoneView ? (
                 <>
                   <TextField
@@ -508,86 +466,6 @@ export default function AuthScreen({ navigation }: Props): React.JSX.Element {
                     onChangeText={setRegPassword}
                     error={errors.regPassword}
                   />
-                  {selectedType === 'Doctor' && (
-                    <TextField
-                      label="Degree"
-                      icon="graduation-cap"
-                      placeholder="e.g. MBBS, MD, MS"
-                      value={degree}
-                      onChangeText={setDegree}
-                      error={errors.degree}
-                    />
-                  )}
-                  {selectedType === 'Doctor' && (
-                    <TextField
-                      label="Registration Number"
-                      icon="id"
-                      placeholder="MMC-12345"
-                      value={regNumber}
-                      onChangeText={setRegNumber}
-                      error={errors.regNumber}
-                    />
-                  )}
-                  {selectedType === 'Doctor' && (
-                    <TextField
-                      label="Registration Authority"
-                      icon="building"
-                      placeholder="State Medical Council"
-                      value={regAuthority}
-                      onChangeText={setRegAuthority}
-                      error={errors.regAuthority}
-                    />
-                  )}
-                  {selectedType === 'Nurse' && (
-                    <TextField
-                      label="Qualification"
-                      icon="stethoscope"
-                      placeholder="GNM / B.Sc Nursing"
-                      value={qualification}
-                      onChangeText={setQualification}
-                      error={errors.qualification}
-                    />
-                  )}
-                  {selectedType === 'Compounder' && (
-                    <TextField
-                      label="Qualification"
-                      icon="tablet"
-                      placeholder="B.Sc Nursing / Diploma"
-                      value={qualification}
-                      onChangeText={setQualification}
-                      error={errors.qualification}
-                    />
-                  )}
-                  {selectedType === 'Caretaker' && (
-                    <TextField
-                      label="Qualification"
-                      icon="heart"
-                      placeholder="Certified Patient Caretaker"
-                      value={qualification}
-                      onChangeText={setQualification}
-                      error={errors.qualification}
-                    />
-                  )}
-                  {selectedType === 'Lab Care' && (
-                    <>
-                      <TextField
-                        label="Lab Name"
-                        icon="flask"
-                        placeholder="Sharma Path Lab"
-                        value={labName}
-                        onChangeText={setLabName}
-                        error={errors.labName}
-                      />
-                      <TextField
-                        label="License / Registration No."
-                        icon="id"
-                        placeholder="NABL-12345"
-                        value={regNumber}
-                        onChangeText={setRegNumber}
-                        error={errors.regNumber}
-                      />
-                    </>
-                  )}
                 </>
               )}
 
@@ -710,7 +588,7 @@ const styles = StyleSheet.create({
   /* ---------------------------- segmented ----------------------------- */
   segment: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    backgroundColor: colors.cardOverlay,
     borderRadius: radius.pill,
     padding: 4,
     borderWidth: 1,
@@ -781,42 +659,6 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
   },
 
-  /* ------------------------------ Type Selector -------------------------------- */
-  typeSelector: {
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.sm,
-  },
-  typeSelectorLabel: {
-    ...typography.smallMedium,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-    fontWeight: '500',
-  },
-  typeChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    alignItems: 'center',
-  },
-  typeChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    ...shadow.sm,
-  },
-  typeChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  typeChipText: {
-    ...typography.smallMedium,
-    color: colors.text,
-  },
-  typeChipActiveText: { color: colors.textInverse },
-
   /* ------------------------------ Google -------------------------------- */
   dividerRow: {
     flexDirection: 'row',
@@ -868,7 +710,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.borderStrong,
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    backgroundColor: colors.cardOverlay,
   },
   guestText: { ...typography.smallMedium, color: colors.blue, fontSize: 13 },
   terms: {

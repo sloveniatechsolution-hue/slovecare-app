@@ -507,7 +507,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     alignSelf: 'center',
     top: '42%',
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: colors.cardOverlay,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderRadius: radius.md,

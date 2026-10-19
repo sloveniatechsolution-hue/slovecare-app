@@ -55,6 +55,7 @@ const LIGHT = {
   background: '#F5F7FB',
   card: '#FFFFFF',
   cardMuted: '#F7F9FC',
+  cardOverlay: 'rgba(255, 255, 255, 0.90)',
   /**
    * Gradient card ka CTA pill — dono modes me same near-white rehta hai.
    * Seedha '#FFFFFF' istemal mat karo: dark mode me `themedStyleColor` usko
@@ -135,6 +136,7 @@ const DARK: Palette = {
   background: '#070C14',
   card: '#0F1725',
   cardMuted: '#16202F',
+  cardOverlay: 'rgba(15, 23, 37, 0.94)',
   ctaBg: '#F8FAFD',
   border: '#1E2A3C',
   borderStrong: '#2C3D55',
@@ -330,6 +332,12 @@ function themedStyleColor(value: unknown, property: string): unknown {
   }
 
   if (!themeIsDark) return value;
+
+  /* Palette ke rgba tokens (overlay / translucent card) bhi exact dark
+     counterpart follow karein. Pehle yeh branch sirf hex values tak pahunchti
+     thi, isliye kuch sheets/cards dark mode me light hi reh jaate the. */
+  const paletteMapped = DARK_BY_LIGHT[value.toUpperCase()];
+  if (!value.startsWith('#') && paletteMapped !== undefined) return paletteMapped;
 
   /* White sheets (near-opaque) dark me ink sheets ban jaate hain. */
   const white = value.match(/^rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*([0-9.]+)\s*\)$/i);

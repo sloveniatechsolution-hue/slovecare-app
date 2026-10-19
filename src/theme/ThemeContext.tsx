@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { Appearance } from 'react-native';
+import { AppState, Appearance } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { applyTheme } from './theme';
 
@@ -28,6 +28,7 @@ const ThemeContext = createContext<ThemeContextValue>({
 export function ThemeProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const [preference, setPreferenceState] = useState<ThemePreference>('system');
   const [systemDark, setSystemDark] = useState(Appearance.getColorScheme() === 'dark');
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -37,15 +38,29 @@ export function ThemeProvider({ children }: { children: React.ReactNode }): Reac
           setPreferenceState(value);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (active) setHydrated(true);
+      });
     return () => {
       active = false;
     };
   }, []);
 
   useEffect(() => {
-    const sub = Appearance.addChangeListener(({ colorScheme }) => setSystemDark(colorScheme === 'dark'));
-    return () => sub.remove();
+    const syncSystemTheme = (colorScheme = Appearance.getColorScheme()) => {
+      setSystemDark(colorScheme === 'dark');
+    };
+    const appearanceSub = Appearance.addChangeListener(({ colorScheme }) => syncSystemTheme(colorScheme));
+    // Kuch Android builds background me Appearance event nahi bhejte. Resume
+    // par current phone theme dobara padhne se old-theme frame nahi dikhega.
+    const appStateSub = AppState.addEventListener('change', state => {
+      if (state === 'active') syncSystemTheme();
+    });
+    return () => {
+      appearanceSub.remove();
+      appStateSub.remove();
+    };
   }, []);
 
   const setPreference = useCallback((value: ThemePreference) => {
@@ -64,6 +79,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }): Reac
   /* Palette swap render se pehle — uske baad har `colors.x` / style getter nayi
      value padhta hai (poori app bina remount ke theme follow karti hai). */
   applyTheme(dark ? 'dark' : 'light');
+
+  /* Saved preference aane se pehle screens mount na hon. Isse system-dark ka
+     first frame saved light theme ke cards me capture nahi hota. */
+  if (!hydrated) return <></>;
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
