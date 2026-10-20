@@ -15,6 +15,9 @@ import EmergencyScreen from '../screens/EmergencyScreen';
 import LabReportsScreen from '../screens/LabReportsScreen';
 import ServicesScreen from '../screens/ServicesScreen';
 import PrescriptionReaderScreen from '../screens/PrescriptionReaderScreen';
+import PrescriptionReaderPlansScreen from '../screens/PrescriptionReaderPlansScreen';
+import PrescriptionDetailScreen from '../screens/PrescriptionDetailScreen';
+import DietPlannerLandingScreen from '../screens/DietPlannerLandingScreen';
 import DietPlannerScreen from '../screens/DietPlannerScreen';
 import DietPlanResultScreen from '../screens/DietPlanResultScreen';
 import ConsultationBookScreen from '../screens/ConsultationBookScreen';
@@ -56,6 +59,9 @@ export default function RootNavigator(): React.JSX.Element {
         <Stack.Screen name="LabReports" component={LabReportsScreen} />
         <Stack.Screen name="Services" component={ServicesScreen} />
         <Stack.Screen name="PrescriptionReader" component={PrescriptionReaderScreen} />
+        <Stack.Screen name="PrescriptionReaderPlans" component={PrescriptionReaderPlansScreen} />
+        <Stack.Screen name="PrescriptionDetail" component={PrescriptionDetailScreen} />
+        <Stack.Screen name="DietPlannerLanding" component={DietPlannerLandingScreen} />
         <Stack.Screen name="DietPlanner" component={DietPlannerScreen} />
         <Stack.Screen name="DietPlanResult" component={DietPlanResultScreen} />
         <Stack.Screen name="ConsultationBook" component={ConsultationBookScreen} />

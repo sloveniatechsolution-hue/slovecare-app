@@ -1,5 +1,5 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
-import { DietPlan, LabTest, Medicine } from '../api/api';
+import { DietPlan, LabTest, Medicine, Prescription } from '../api/api';
 
 /** Staff type — Doctors tab ke filter/chips ke liye. */
 export type StaffType = 'doctor' | 'compounder' | 'nurse' | 'caretaker' | 'lab';
@@ -23,6 +23,23 @@ export type RootStackParamList = {
   Services: undefined;
   /** Prescription Reader — photo → PaddleOCR → Gemini analysis. */
   PrescriptionReader: undefined;
+  /**
+   * Prescription Reader plans — 3 free reads, phir ₹19 me 10 reads ka pack.
+   * (Credits khatam hone par reader screen se yahin bheja jaata hai.)
+   */
+  PrescriptionReaderPlans: undefined;
+  /**
+   * Doctor ki prescription (professional view + SloveCare PDF download/share).
+   * `prescription` pass ho to seedha render hota hai, warna `bookingId` se fetch.
+   */
+  PrescriptionDetail: {
+    bookingId?: string;
+    prescription?: Prescription;
+    doctorName?: string;
+    serviceName?: string;
+  };
+  /** AI Weekly Diet Planner — landing page with pricing + payment. */
+  DietPlannerLanding: undefined;
   /** AI Weekly Diet Planner — multi-step form → Gemini 7-day plan. */
   DietPlanner: undefined;
   /**

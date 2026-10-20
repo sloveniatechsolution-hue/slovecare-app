@@ -16,6 +16,7 @@ import type {
   ConsultationMessage,
   ConsultationRtcConfig,
 } from '../consultation/types';
+import { withoutDemoVendors } from '../utils/demoVendors';
 
 /* -------------------------------------------------------------------------- */
 /*  1. CONFIG                                                                  */
@@ -23,27 +24,40 @@ import type {
 
 /**
  * Backend ke hosts — ek se zyada isliye kyunki kuch networks (government/office
- * WiFi, kuch ISPs) `*.vercel.app` ka DNS hi block kar dete hain (SERVFAIL).
- * Aise me `fetch` ko host resolve hi nahi hota → "Unable to reach" error.
+ * WiFi, kuch ISPs, mobile data) kisi host ka DNS hi block kar dete hain
+ * (SERVFAIL) ya host down ho. Aise me `fetch` error deta hai — ya DNS resolve
+ * hone me hi latak ke 20s timeout tak chala jaata hai.
  *
- * Har request pehle chalti host se shuru hoti hai, network-level fail hone par
- * automatic doosre host par chali jaati hai aur us host ko session ke liye
- * yaad rakh leti hai.
+ *  1. `slovecarebackend.slovecare.in`   → self-hosted (nginx → Express) — primary
+ *  2. `api.slovecare.in`                → Vercel (custom domain) — fallback
+ *  3. `sloveniajanseva-backend.vercel.app` → Vercel direct — fallback
  *
- *  1. `api.slovecare.in`   → custom domain (blocked networks par bhi chalta hai)
- *  2. `*.vercel.app`       → Vercel direct (fallback)
+ * ⚠️ IS LIST ME DUPLICATE KABHI MAT DAALO.
+ * Pehle dono entries ek hi host thi (`slovecarebackend.slovecare.in` × 2) —
+ * failover marr gaya: ek hi dead host par 2 × 20s = 40s latka rehta tha aur
+ * phir "Request timed out" aata tha. Ab:
+ *   - `hostList()` duplicates hata deta hai,
+ *   - GET requests HEDGED chalti hain — pehla host turant, agla host 1.5s baad
+ *     (ya pehle fail hone par turant) parallel chalu → dead host hone par bhi
+ *     app 1–3s me load ho jaata hai.
  */
 export const API_HOSTS = [
   'https://slovecarebackend.slovecare.in',
-  'https://slovecarebackend.slovecare.in',
+  'https://api.slovecare.in',
+  'https://sloveniajanseva-backend.vercel.app',
 ] as const;
 
+/** Duplicates hata kar host list — failover me same host dobara try na ho. */
+function hostList(): string[] {
+  return Array.from(new Set<string>(API_HOSTS));
+}
+
 /** Session me abhi kaam kar raha host (request() ise update karta hai). */
-let activeHostIndex = 0;
+let activeHost: string = API_HOSTS[0];
 
 /** Abhi healthy host ka origin — images/links isi se banate hain. */
 export function apiOrigin(): string {
-  return API_HOSTS[activeHostIndex];
+  return activeHost;
 }
 
 /** API base URL (primary host) — sirf wahi jagah use karein jahan static const chahiye. */
@@ -59,10 +73,35 @@ const AI_CHAT_PATH = '/api/v1/ai/chat';
 const PRESCRIPTION_OCR_PATH = '/api/v1/prescription/ocr';
 const PRESCRIPTION_ANALYZE_PATH = '/api/v1/prescription/analyze';
 
+/**
+ * Prescription Reader credits (3 free reads → ₹19 me 10 reads).
+ * Backend contract:
+ *   GET  /prescription/quota        → balance + pack ki price
+ *   POST /prescription/create-order → Razorpay order (₹19)
+ *   POST /prescription/verify       → signature verify + 10 reads grant
+ */
+const PRESCRIPTION_QUOTA_PATH = '/api/v1/prescription/quota';
+const PRESCRIPTION_CREDIT_ORDER_PATH = '/api/v1/prescription/create-order';
+const PRESCRIPTION_CREDIT_VERIFY_PATH = '/api/v1/prescription/verify';
+
 /** AI Weekly Diet Planner path — envelope responses, auth required. */
 const DIET_PLANS_PATH = '/api/v1/diet-plans';
 
+/** Ek host par request ka max time (hedged race me total wait bhi yahi hai). */
 const REQUEST_TIMEOUT_MS = 20000;
+
+/**
+ * Saare hosts mila kar ek call ka max time — sirf sequential failover
+ * (POST/PUT/DELETE) me use hota hai, taaki user 3 × 20s = 60s na wait kare.
+ */
+const REQUEST_TOTAL_BUDGET_MS = 30000;
+
+/**
+ * Hedged request delay — pehla host itni der tak jawab nahi de to agla host
+ * parallel chalu ho jaata hai (dead host par 20s wait karne se bacha).
+ */
+const HOST_HEDGE_DELAY_MS = 1500;
+
 const TOKEN_STORAGE_KEY = 'slovecare_user_token';
 
 /* -------------------------------------------------------------------------- */
@@ -197,6 +236,8 @@ export interface LabDetails {
   licenseNumber?: string;
   certifications?: string[];
   homeSampleCollectionAvailable?: boolean;
+  /** Backend `homeCollectionAvailable` bhejta hai — dono keys support hain. */
+  homeCollectionAvailable?: boolean;
   homeCollectionFee?: number;
   labTimings?: { start?: string; end?: string };
   workingDays?: string[];
@@ -297,7 +338,18 @@ export interface Prescription {
   date?: string;
   diagnosis?: string;
   vitals?: Record<string, string | number>;
-  medicines?: { name?: string; dose?: string; timing?: string; duration?: string }[];
+  /**
+   * Medicines — doctor app `frequency` + `instructions` bhejta hai, kuch purane
+   * records `timing` use karte hain (dono handle kiye jaate hain).
+   */
+  medicines?: {
+    name?: string;
+    dose?: string;
+    timing?: string;
+    frequency?: string;
+    duration?: string;
+    instructions?: string;
+  }[];
   advice?: string;
   followUpDate?: string;
   /** Doctor ke upload kiye files (prescription image/PDF) — sirf aapke. */
@@ -379,6 +431,32 @@ export interface PrescriptionAnalysisResult {
   analysis: PrescriptionAnalysis;
   disclaimer: string;
   source?: string;
+}
+
+/**
+ * Prescription Reader credit balance — server ka authoritative view.
+ * (3 free reads + paid packs of 10 reads for ₹19.)
+ */
+export interface PrescriptionQuota {
+  /** Total free reads user ko mili (usually 3). */
+  freeTotal?: number;
+  /** Free reads ka bacha hua balance. */
+  freeRemaining?: number;
+  /** Paid pack se aaye reads ka balance. */
+  paidRemaining?: number;
+  /** Pack me kitne reads milte hain (usually 10). */
+  packSize?: number;
+  /** Pack ki price (rupees, usually 19). */
+  packPriceRupees?: number;
+}
+
+/** Razorpay order — 10-read pack (₹19) ke liye. */
+export interface PrescriptionCreditOrder {
+  keyId: string;
+  orderId: string;
+  amount: number; // paise
+  currency: string;
+  amountRupees: number;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -507,6 +585,58 @@ export interface DietPlanListItem {
   version: number;
   summary: DietPlanSummary;
   createdAt?: string;
+}
+
+/**
+ * Weekly diet plan subscription status (server-authoritative).
+ * Pehla week free hota hai, uske baad ₹9/week.
+ */
+export interface DietPlanSubscriptionStatus {
+  weekStart: string;
+  weekEnd: string;
+  /** Is hafte ka plan already ban chuka hai. */
+  hasPlanThisWeek: boolean;
+  /** Is hafte ka existing plan (hasPlanThisWeek true par). */
+  planId: string | null;
+  /** Pehla week (free trial). */
+  isFreeWeek: boolean;
+  /** Is hafte ka payment already ho chuka hai. */
+  isPaid: boolean;
+  /** Payment lagti hai (pehla week nahi, plan nahi, paid nahi). */
+  requiresPayment: boolean;
+  /** Weekly price (rupees). */
+  amountRupees: number;
+}
+
+/**
+ * create-order ka jawab — server decide karta hai payment lagti hai ya nahi.
+ * `requiresPayment:false` → seedha plan bana sakte ho (free / already paid).
+ */
+export interface DietPlanOrderResult {
+  requiresPayment: boolean;
+  /** Pehla week free. */
+  free?: boolean;
+  /** Is hafte ka payment pehle ho chuka hai. */
+  alreadyPaid?: boolean;
+  /** Payment required hone par — Razorpay checkout ke liye. */
+  keyId?: string;
+  orderId?: string;
+  /** Amount paise me (Razorpay checkout unit). */
+  amount?: number;
+  currency?: string;
+  /** Amount rupees me (UI ke liye). */
+  amountRupees: number;
+  weekStart?: string;
+  weekEnd?: string;
+}
+
+/** Payment verify ka jawab. */
+export interface DietPlanVerifyResult {
+  verified: boolean;
+  paymentId?: string;
+  weekStart?: string;
+  weekEnd?: string;
+  amountRupees?: number;
 }
 
 export interface BookingCustomer {
@@ -885,6 +1015,20 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * True jab backend par ye route abhi live nahi hai (404 / "route not found").
+ * Naye features (jaise prescription credits) device-ledger fallback par
+ * switch karne ke liye isse use karte hain — error user ko dikhana nahi hai.
+ */
+export function isMissingRoute(error: unknown): boolean {
+  const status = (error as ApiError)?.statusCode;
+  if (status === 404) {
+    return true;
+  }
+  const message = ((error as Error)?.message || '').toLowerCase();
+  return message.includes('route not found') || message.includes('not found');
+}
+
 /* -------------------------------------------------------------------------- */
 /*  3. TOKEN + CORE REQUEST                                                    */
 /* -------------------------------------------------------------------------- */
@@ -937,9 +1081,9 @@ interface RequestOptions {
 function buildUrl(
   path: string,
   query?: RequestOptions['query'],
-  hostIndex: number = activeHostIndex,
+  host: string = activeHost,
 ): string {
-  const base = `${API_HOSTS[hostIndex]}/api/v1`;
+  const base = `${host}/api/v1`;
   const url = path.startsWith('http') ? path : `${base}${path.startsWith('/') ? '' : '/'}${path}`;
   if (!query) {
     return url;
@@ -948,6 +1092,231 @@ function buildUrl(
     .filter((key) => query[key] !== undefined && query[key] !== null && query[key] !== '')
     .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(String(query[key]))}`);
   return params.length ? `${url}${url.includes('?') ? '&' : '?'}${params.join('&')}` : url;
+}
+
+/**
+ * Ek host par attempt ka outcome.
+ *
+ * `kind: 'server'` — server ne jawab de diya (4xx/5xx). Ye FINAL hai, doosre
+ * host ki zaroorat nahi (backend hi ye bol raha hai).
+ * `kind: 'network'` — DNS block / host down / timeout → agla host try karo.
+ */
+type HostResult<T> =
+  | { ok: true; data: T; host: string }
+  | { ok: false; kind: 'network'; error: Error; timedOut: boolean; host: string }
+  | { ok: false; kind: 'server'; error: ApiError; host: string };
+
+/**
+ * Ek host par ek attempt.
+ *
+ * Kabhi throw nahi karta — outcome hamesha `HostResult` me aata hai, taaki
+ * caller ke paas ek hi failure path ho (aur rejection kabhi unhandled na
+ * chhoode, jo request ko hamesha pending chhod deta tha).
+ */
+async function attemptHost<T>(
+  host: string,
+  path: string,
+  query: RequestOptions['query'],
+  init: RequestInit,
+  timeoutMs: number,
+  outerSignal?: AbortSignal,
+): Promise<HostResult<T>> {
+  const controller = new AbortController();
+  const onOuterAbort = () => controller.abort();
+  /* Already-aborted signal par 'abort' event fire nahi hota — manually abort karo. */
+  if (outerSignal?.aborted) {
+    controller.abort();
+  } else {
+    outerSignal?.addEventListener('abort', onOuterAbort);
+  }
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(buildUrl(path, query, host), {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const timedOut = (error as Error)?.name === 'AbortError';
+    console.warn(
+      `[api] ${host} unreachable (${(error as Error)?.name}):`,
+      (error as Error)?.message,
+    );
+    return { ok: false, kind: 'network', error: error as Error, timedOut, host };
+  } finally {
+    clearTimeout(timer);
+    outerSignal?.removeEventListener('abort', onOuterAbort);
+  }
+
+  let json: ApiEnvelope<T> | null = null;
+  try {
+    json = (await response.json()) as ApiEnvelope<T>;
+  } catch {
+    json = null;
+  }
+
+  if (!response.ok || !json || json.success === false) {
+    return {
+      ok: false,
+      kind: 'server',
+      error: new ApiError(
+        json?.message || `Request failed (${response.status})`,
+        json?.statusCode || response.status,
+      ),
+      host,
+    };
+  }
+
+  return { ok: true, data: json.data, host };
+}
+
+/** Saare hosts fail ho gaye → ek clear error banao. */
+function networkError(failures: HostResult<unknown>[]): ApiError {
+  const netFailures = failures.filter(
+    (f): f is HostResult<unknown> & { ok: false; kind: 'network'; timedOut: boolean } =>
+      !f.ok && f.kind === 'network',
+  );
+  const timedOut = netFailures.length > 0 && netFailures.every(f => f.timedOut);
+  return new ApiError(
+    timedOut
+      ? 'Request timed out. Please check your connection.'
+      : 'Unable to reach SloveCare server. Please try again.',
+    0,
+  );
+}
+
+/**
+ * GET (idempotent) requests ke liye HEDGED host race.
+ *
+ * Pehla host turant chalta hai. Agla host do tarah se start hota hai:
+ *   - pehla host FAIL ho jaye   → agla TURANT try hota hai,
+ *   - pehla host HEDGE_DELAY tak jawab na de → agla PARALLEL chalu ho jata hai.
+ *
+ * Isse:
+ *   - normal (healthy) case me sirf 1 hi request jati hai — koi extra load nahi,
+ *   - ek dead/blocked host hone par user 20s (duplicate host hone par 40s) nahi,
+ *     balki 1–3s me jawab mil jaata hai.
+ */
+async function raceHosts<T>(
+  hosts: string[],
+  path: string,
+  query: RequestOptions['query'],
+  init: RequestInit,
+): Promise<T> {
+  const losers = new AbortController();
+  const failures: HostResult<unknown>[] = [];
+  const started = new Set<number>();
+  let winner: (HostResult<T> & { ok: true }) | null = null;
+  let serverError: ApiError | null = null;
+  let pending = 0;
+
+  let settle: () => void = () => {};
+  const finished = new Promise<void>(resolve => {
+    settle = resolve;
+  });
+
+  const start = (index: number) => {
+    if (winner || serverError || index >= hosts.length || started.has(index)) {
+      return;
+    }
+    started.add(index);
+    pending += 1;
+
+    attemptHost<T>(hosts[index], path, query, init, REQUEST_TIMEOUT_MS, losers.signal).then(result => {
+      pending -= 1;
+      if (winner || serverError) {
+        return; // pehle hi settle ho chuka hai
+      }
+      if (result.ok) {
+        winner = result;
+        losers.abort(); // jeet gaya — baaki pending requests rok do
+        settle();
+        return;
+      }
+      if (result.kind === 'server') {
+        /* Server ne jawab de diya (4xx/5xx) — ye final hai, agle host ki
+           zaroorat nahi (wahi backend ye bol raha hai). */
+        serverError = result.error;
+        settle();
+        return;
+      }
+      failures.push(result);
+      start(index + 1); // network fail → agla host TURANT
+      if (pending === 0) {
+        settle(); // koi host baki nahi
+      }
+    });
+  };
+
+  /* Pehla host turant; baaki hosts hedge timer se — pehla slow/dead lage to
+     parallel chalu ho jaate hain. */
+  start(0);
+  const hedge = setInterval(() => {
+    if (winner || serverError) {
+      clearInterval(hedge);
+      return;
+    }
+    start(started.size);
+  }, HOST_HEDGE_DELAY_MS);
+
+  await finished;
+  clearInterval(hedge);
+
+  /* `winner`/`serverError` closure ke andar set hote hain — TS yahan narrow
+     nahi karta, isliye cast. */
+  const win = winner as (HostResult<T> & { ok: true }) | null;
+  if (win) {
+    activeHost = win.host;
+    return win.data;
+  }
+  const srvError = serverError as ApiError | null;
+  if (srvError) {
+    throw srvError;
+  }
+  throw networkError(failures);
+}
+
+/**
+ * POST/PUT/PATCH/DELETE — sequential failover.
+ *
+ * Inme parallel race nahi kar sakte (double booking / double payment ka risk).
+ * Total wait `REQUEST_TOTAL_BUDGET_MS` se bounded hai, taaki 3 dead hosts par
+ * bhi user 60s na wait kare.
+ */
+async function failoverSequential<T>(
+  hosts: string[],
+  path: string,
+  query: RequestOptions['query'],
+  init: RequestInit,
+): Promise<T> {
+  const deadline = Date.now() + REQUEST_TOTAL_BUDGET_MS;
+  const failures: HostResult<unknown>[] = [];
+
+  for (const host of hosts) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      break;
+    }
+    const result = await attemptHost<T>(
+      host,
+      path,
+      query,
+      init,
+      Math.min(REQUEST_TIMEOUT_MS, remaining),
+    );
+    if (result.ok) {
+      activeHost = host;
+      return result.data;
+    }
+    if (result.kind === 'server') {
+      /* Server ne jawab diya (4xx/5xx) — final, doosre host ki zaroorat nahi. */
+      throw result.error;
+    }
+    failures.push(result);
+  }
+
+  throw networkError(failures);
 }
 
 /**
@@ -976,63 +1345,13 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     body: rawBody ?? (body !== undefined ? JSON.stringify(body) : undefined),
   };
 
-  /**
-   * Host failover — pehle chal raha host, uska network-level fail hone par
-   * baaki hosts. (Kuch networks `*.vercel.app` ka DNS block karte hain.)
-   */
-  let response: Response | null = null;
-  let usedIndex = activeHostIndex;
-  let timedOut = false;
+  const hosts = hostList();
+  const isIdempotent = method === 'GET';
 
-  for (let i = 0; i < API_HOSTS.length; i += 1) {
-    const hostIndex = (activeHostIndex + i) % API_HOSTS.length;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    try {
-      response = await fetch(buildUrl(path, query, hostIndex), {
-        ...init,
-        signal: controller.signal,
-      });
-      usedIndex = hostIndex;
-      break;
-    } catch (error) {
-      if ((error as Error)?.name === 'AbortError') {
-        timedOut = true;
-      }
-      console.warn(
-        `[api] ${API_HOSTS[hostIndex]} unreachable (${(error as Error)?.name}):`,
-        (error as Error)?.message,
-      );
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  if (!response) {
-    throw new ApiError(
-      timedOut
-        ? 'Request timed out. Please check your connection.'
-        : 'Unable to reach SloveCare server. Please try again.',
-      0,
-    );
-  }
-  activeHostIndex = usedIndex; // ye host chal raha hai — aage isi se
-
-  let json: ApiEnvelope<T> | null = null;
-  try {
-    json = (await response.json()) as ApiEnvelope<T>;
-  } catch {
-    json = null;
-  }
-
-  if (!response.ok || !json || json.success === false) {
-    throw new ApiError(
-      json?.message || `Request failed (${response.status})`,
-      json?.statusCode || response.status,
-    );
-  }
-
-  return json.data;
+  /* GET → hedged race (tej, resilient). Mutations → sequential failover. */
+  return isIdempotent
+    ? raceHosts<T>(hosts, path, query, init)
+    : failoverSequential<T>(hosts, path, query, init);
 }
 
 /** Health check — backend online hai ya nahi. */
@@ -1058,16 +1377,16 @@ async function prescriptionRequest<T>(
   }
 
   let lastFailure: unknown = null;
-  for (let i = 0; i < API_HOSTS.length; i += 1) {
-    const hostIndex = (activeHostIndex + i) % API_HOSTS.length;
+  const hosts = hostList();
+  for (const host of hosts) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(`${API_HOSTS[hostIndex]}${path}`, {
+      const res = await fetch(`${host}${path}`, {
         ...initFactory(),
         signal: controller.signal,
       });
-      activeHostIndex = hostIndex;
+      activeHost = host;
 
       let json: ApiEnvelope<T> | null = null;
       try {
@@ -1093,7 +1412,7 @@ async function prescriptionRequest<T>(
       }
       lastFailure = error;
       // Privacy: request/response content kabhi log nahi.
-      console.warn(`[api] ${API_HOSTS[hostIndex]}${path} unreachable:`, (error as Error)?.name);
+      console.warn(`[api] ${host}${path} unreachable:`, (error as Error)?.name);
     } finally {
       clearTimeout(timer);
     }
@@ -1123,8 +1442,8 @@ async function dietRequest<T>(
   const { method = 'GET', body, timeoutMs, timeoutMessage } = options;
 
   let lastFailure: unknown = null;
-  for (let i = 0; i < API_HOSTS.length; i += 1) {
-    const hostIndex = (activeHostIndex + i) % API_HOSTS.length;
+  const hosts = hostList();
+  for (const host of hosts) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -1135,13 +1454,13 @@ async function dietRequest<T>(
       if (authToken) {
         headers.Authorization = `Bearer ${authToken}`;
       }
-      const res = await fetch(`${API_HOSTS[hostIndex]}${DIET_PLANS_PATH}${path}`, {
+      const res = await fetch(`${host}${DIET_PLANS_PATH}${path}`, {
         method,
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
-      activeHostIndex = hostIndex;
+      activeHost = host;
 
       let json: ApiEnvelope<T> | null = null;
       try {
@@ -1165,7 +1484,7 @@ async function dietRequest<T>(
         throw error; // server jawab de chuka hai — doosre host ki zaroorat nahi
       }
       lastFailure = error;
-      console.warn(`[api] ${API_HOSTS[hostIndex]}${DIET_PLANS_PATH}${path} unreachable:`, (error as Error)?.name);
+      console.warn(`[api] ${host}${DIET_PLANS_PATH}${path} unreachable:`, (error as Error)?.name);
     } finally {
       clearTimeout(timer);
     }
@@ -1278,7 +1597,9 @@ export const api = {
           type: query.type,
         },
         auth: false,
-      });
+        /* Backend par seeded demo doctors abhi bhi hain (delete route nahi
+           hai) — patient ki listing me woh dikhne nahi chahiye. */
+      }).then(withoutDemoVendors);
     },
 
     /** GET /api/v1/doctors/consultations/:vendorId */
@@ -1302,7 +1623,9 @@ export const api = {
           radiusKm: query.radiusKm,
         },
         auth: false,
-      });
+        /* Seeded demo staff (doctors/compounders/caretakers) chhupaye jaate
+           hain — labs is filter se guzarte hain. */
+      }).then(withoutDemoVendors);
     },
 
     /** GET /api/v1/vendors/:id — details + reviews + booking count */
@@ -1504,17 +1827,17 @@ export const api = {
        * to `null` lautata hai — caller doosra host try karta hai. Server ka
        * response (chaahe 4xx/5xx) mila to seedha throw — host chal raha tha.
        */
-      const attempt = async (hostIndex: number): Promise<string | null> => {
+      const attempt = async (host: string): Promise<string | null> => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 45000); // LLM thoda slow ho sakta hai
         try {
-          const res = await fetch(`${API_HOSTS[hostIndex]}${AI_CHAT_PATH}`, {
+          const res = await fetch(`${host}${AI_CHAT_PATH}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify({ messages }),
             signal: controller.signal,
           });
-          activeHostIndex = hostIndex; // ye host chal raha hai — aage isi se
+          activeHost = host; // ye host chal raha hai — aage isi se
           // Body HTML/text ho sakta hai (Vercel error page) — parse fail par
           // "Unable to reach" na dikhaye, status ke saath clear message do.
           let json: { reply?: string; error?: string; message?: string } | null = null;
@@ -1541,7 +1864,7 @@ export const api = {
           }
           lastFailure = error;
           console.warn(
-            `[api] ${API_HOSTS[hostIndex]}${AI_CHAT_PATH} unreachable:`,
+            `[api] ${host}${AI_CHAT_PATH} unreachable:`,
             (error as Error)?.message,
           );
           return null;
@@ -1552,9 +1875,8 @@ export const api = {
 
       /* Host failover: active host → baaki hosts (kuch networks vercel.app block karte hain).
          Server ka response mila to `attempt` khud throw kar deta hai — failover bekar hai. */
-      for (let i = 0; i < API_HOSTS.length; i += 1) {
-        const hostIndex = (activeHostIndex + i) % API_HOSTS.length;
-        const reply = await attempt(hostIndex);
+      for (const host of hostList()) {
+        const reply = await attempt(host);
         if (reply) {
           return reply;
         }
@@ -1690,6 +2012,77 @@ export const api = {
         'The AI analysis took too long. Please try again.',
       );
     },
+
+    /* ----------------------- credits (3 free → ₹19 / 10 reads) ------------- */
+
+    /**
+     * GET /prescription/quota — user ka credit balance.
+     * Backend route live hone par ye server-authoritative ho jaata hai;
+     * route na hone par caller device ledger par fallback kar leta hai.
+     */
+    quota(): Promise<PrescriptionQuota> {
+      return prescriptionRequest<PrescriptionQuota>(
+        PRESCRIPTION_QUOTA_PATH,
+        () => {
+          const headers: Record<string, string> = { Accept: 'application/json' };
+          if (authToken) {
+            headers.Authorization = `Bearer ${authToken}`;
+          }
+          return { method: 'GET', headers };
+        },
+        15000,
+        'Could not check your prescription reads. Please try again.',
+      );
+    },
+
+    /**
+     * POST /prescription/create-order — Razorpay order for the 10-read pack
+     * (₹19). Server amount decide karta hai, client tamper nahi kar sakta.
+     */
+    createCreditOrder(): Promise<PrescriptionCreditOrder> {
+      return prescriptionRequest<PrescriptionCreditOrder>(
+        PRESCRIPTION_CREDIT_ORDER_PATH,
+        () => {
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          };
+          if (authToken) {
+            headers.Authorization = `Bearer ${authToken}`;
+          }
+          return { method: 'POST', headers, body: JSON.stringify({ pack: 'reads10', quantity: 1 }) };
+        },
+        20000,
+        'Could not start payment. Please try again.',
+      );
+    },
+
+    /**
+     * POST /prescription/verify — Razorpay signature verify + 10 reads grant.
+     * Server side idempotent hai (same order dobara verify ho to double
+     * credit nahi milta).
+     */
+    verifyCreditPayment(input: {
+      razorpay_order_id: string;
+      razorpay_payment_id: string;
+      razorpay_signature: string;
+    }): Promise<{ verified: boolean; paidCredits?: number }> {
+      return prescriptionRequest<{ verified: boolean; paidCredits?: number }>(
+        PRESCRIPTION_CREDIT_VERIFY_PATH,
+        () => {
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          };
+          if (authToken) {
+            headers.Authorization = `Bearer ${authToken}`;
+          }
+          return { method: 'POST', headers, body: JSON.stringify(input) };
+        },
+        20000,
+        'Payment verification failed. Please try again.',
+      );
+    },
   },
 
   /* --------------------------- AI WEEKLY DIET PLANNER -------------------- */
@@ -1766,6 +2159,56 @@ export const api = {
         method: 'DELETE',
         timeoutMs: 20000,
         timeoutMessage: 'Deleting this plan took too long. Please try again.',
+      });
+    },
+
+    /**
+     * GET /diet-plans/subscription-status — is hafte ka plan/payment status.
+     * Server-authoritative: `requiresPayment` batata hai ki payment lagti hai
+     * ya nahi (pehla week free hota hai).
+     */
+    subscriptionStatus(): Promise<DietPlanSubscriptionStatus> {
+      return dietRequest<DietPlanSubscriptionStatus>('/subscription-status', {
+        timeoutMs: 20000,
+        timeoutMessage: 'Could not check your plan status. Please try again.',
+      });
+    },
+
+    /**
+     * POST /diet-plans/create-order — Razorpay order for weekly diet plan
+     * subscription (₹9/week, pehla week free).
+     *
+     * Server decide karta hai:
+     *   - `requiresPayment:false` → pehla week free ya already paid
+     *   - `requiresPayment:true`  → Razorpay order (keyId/orderId/amount)
+     */
+    createPaymentOrder(weekStart?: string): Promise<DietPlanOrderResult> {
+      return dietRequest<DietPlanOrderResult>('/create-order', {
+        method: 'POST',
+        body: {
+          weekStart,
+          /* Client timezone — backend usi se "is hafte ka Monday" nikaalta hai. */
+          offsetMinutes: -new Date().getTimezoneOffset(),
+        },
+        timeoutMs: 20000,
+        timeoutMessage: 'Could not start payment. Please try again.',
+      });
+    },
+
+    /**
+     * POST /diet-plans/verify — verify Razorpay payment signature for
+     * diet plan subscription. Idempotent — dobara call karne par bhi safe.
+     */
+    verifyPayment(input: {
+      razorpay_order_id: string;
+      razorpay_payment_id: string;
+      razorpay_signature: string;
+    }): Promise<DietPlanVerifyResult> {
+      return dietRequest<DietPlanVerifyResult>('/verify', {
+        method: 'POST',
+        body: input,
+        timeoutMs: 20000,
+        timeoutMessage: 'Payment verification failed. Please try again.',
       });
     },
   },

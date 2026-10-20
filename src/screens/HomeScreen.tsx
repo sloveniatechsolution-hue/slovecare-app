@@ -204,7 +204,7 @@ export default function HomeScreen(): React.JSX.Element {
     } else if (route === 'Appointments') {
       navigation.navigate('Appointments');
     } else if (route === 'DietPlanner') {
-      navigation.navigate('DietPlanner');
+      navigation.navigate('DietPlannerLanding');
     } else {
       /* type hamesha bhejo (doctor/caretaker/…) — undefined bhejne par purana
          filter (jaise Care Takers) Doctors tab me reh jaata tha. openedAt se

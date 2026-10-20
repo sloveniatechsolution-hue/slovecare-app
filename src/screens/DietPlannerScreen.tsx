@@ -416,6 +416,7 @@ export default function DietPlannerScreen({ navigation }: Props): React.JSX.Elem
   const [weekPlanExists, setWeekPlanExists] = useState(false);
   /* Location health profile se aati hai — sirf tab edit fields dikhti hain jab user khud badalna chahe. */
   const [editingLocation, setEditingLocation] = useState(false);
+  const [existingPlanId, setExistingPlanId] = useState<string | null>(null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
 
   const hasProfileLocation = Boolean(user?.city || user?.state);
@@ -446,7 +447,9 @@ export default function DietPlannerScreen({ navigation }: Props): React.JSX.Elem
           const today = new Date();
           const pad = (n: number) => String(n).padStart(2, '0');
           const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-          setWeekPlanExists(plans.value.some(p => p.weekStart <= todayStr && todayStr <= p.weekEnd));
+          const existing = plans.value.find(p => p.weekStart <= todayStr && todayStr <= p.weekEnd);
+          setWeekPlanExists(Boolean(existing));
+          setExistingPlanId(existing?.id ?? null);
         }
       } catch {
         /* prefill optional hai — profile se chalega */
@@ -618,6 +621,37 @@ export default function DietPlannerScreen({ navigation }: Props): React.JSX.Elem
             </Text>
             <View style={{ marginTop: spacing.lg }}>
               <AppButton label="Sign In / Register" onPress={() => navigation.navigate('Auth')} />
+            </View>
+          </Card>
+        </View>
+      </Screen>
+    );
+  }
+
+  /* Weekly plan already exists — sweet message, form band. */
+  if (weekPlanExists && existingPlanId) {
+    return (
+      <Screen>
+        <AppHeader title="AI Weekly Diet Planner" onBack={() => navigation.goBack()} />
+        <View style={styles.authBox}>
+          <Card>
+            <View style={styles.authIcon}>
+              <Icon name="calendar" size={26} color={colors.success} />
+            </View>
+            <Text style={[typography.h4, { textAlign: 'center', marginTop: spacing.md }]}>
+              You already have this week's plan!
+            </Text>
+            <Text style={[typography.small, { textAlign: 'center', marginTop: 4 }]}>
+              You have already created a diet plan for this week. Please wait for next week to generate a new one.
+              You can view or export your current plan below.
+            </Text>
+            <View style={{ marginTop: spacing.lg }}>
+              <AppButton
+                label="View This Week's Plan"
+                icon="calendar"
+                variant="accent"
+                onPress={() => navigation.navigate('DietPlanResult', { planId: existingPlanId })}
+              />
             </View>
           </Card>
         </View>

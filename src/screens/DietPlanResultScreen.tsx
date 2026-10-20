@@ -171,7 +171,7 @@ export default function DietPlanResultScreen({ navigation, route }: Props): Reac
     );
   };
 
-  const startNewPlan = () => navigation.navigate('DietPlanner');
+  const startNewPlan = () => navigation.navigate('DietPlannerLanding');
 
   const deletePlan = () => {
     if (!plan || busy) return;
