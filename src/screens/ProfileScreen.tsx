@@ -27,7 +27,7 @@ export default function ProfileScreen(): React.JSX.Element {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { user, logout, isLoggedIn, updateUser } = useAuth();
-  const { dark, setPreference } = useThemePreference();
+  const { dark, preference, setPreference } = useThemePreference();
 
   const [dashboard, setDashboard] = useState<UserDashboard | null>(null);
 
@@ -250,14 +250,18 @@ export default function ProfileScreen(): React.JSX.Element {
           </Card>
         </View>
 
-        {/* Appearance — ek hi toggle: on = dark screen, off = light */}
+        {/* Appearance — toggle + system mode indicator */}
         <View style={{ marginTop: spacing.xl }}>
           <Card>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
               <View style={{ flex: 1 }}>
                 <Text style={typography.h4}>Dark Mode</Text>
                 <Text style={[typography.small, { marginTop: 2 }]}>
-                  {dark ? 'On — dark theme is active' : 'Off — light theme is active'}
+                  {preference === 'system'
+                    ? `System default (${dark ? 'Dark' : 'Light'})`
+                    : dark
+                    ? 'On (manual)'
+                    : 'Off (manual)'}
                 </Text>
               </View>
               <Switch
@@ -269,6 +273,16 @@ export default function ProfileScreen(): React.JSX.Element {
                 accessibilityLabel="Dark mode"
               />
             </View>
+            {preference !== 'system' ? (
+              <Pressable
+                onPress={() => setPreference('system')}
+                style={({ pressed }) => [{ marginTop: spacing.sm, alignSelf: 'flex-start' }, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={[typography.caption, { color: colors.blue }]}>
+                  Match phone setting (Auto)
+                </Text>
+              </Pressable>
+            ) : null}
           </Card>
         </View>
 

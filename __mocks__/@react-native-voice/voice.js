@@ -1,0 +1,15 @@
+module.exports = {
+  onSpeechStart: jest.fn(),
+  onSpeechRecognized: jest.fn(),
+  onSpeechEnd: jest.fn(),
+  onSpeechError: jest.fn(),
+  onSpeechResults: jest.fn(),
+  onSpeechPartialResults: jest.fn(),
+  onSpeechVolumeChanged: jest.fn(),
+  start: jest.fn(),
+  stop: jest.fn(),
+  cancel: jest.fn(),
+  destroy: jest.fn(),
+  removeAllListeners: jest.fn(),
+  isAvailable: jest.fn().mockResolvedValue(true),
+};

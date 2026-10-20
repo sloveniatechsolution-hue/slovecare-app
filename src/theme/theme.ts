@@ -198,12 +198,17 @@ export const colors = new Proxy(LIGHT, {
 
 /** Har light hex ka exact dark counterpart — palette se automatically banta hai. */
 const DARK_BY_LIGHT: Record<string, string> = {};
+/** Har dark hex ka exact light counterpart — palette se automatically banta hai. */
+const LIGHT_BY_DARK: Record<string, string> = {};
+
 for (const key of Object.keys(LIGHT) as (keyof typeof LIGHT)[]) {
   /* Wash / on-dark / transparent tokens sirf gradients ke through use hote hain —
      inhe remap table me daalne se shared hex (jaise white) ki value galat ban jaati hai. */
   if (['transparent', 'washTop', 'washMid', 'washBottom', 'onDarkMuted', 'onDarkChip', 'onDarkBorder'].includes(key)) continue;
-  const hex = String(LIGHT[key]).toUpperCase();
-  if (!(hex in DARK_BY_LIGHT)) DARK_BY_LIGHT[hex] = DARK[key];
+  const lightHex = String(LIGHT[key]).toUpperCase();
+  const darkHex = String(DARK[key]).toUpperCase();
+  if (!(lightHex in DARK_BY_LIGHT)) DARK_BY_LIGHT[lightHex] = DARK[key];
+  if (!(darkHex in LIGHT_BY_DARK)) LIGHT_BY_DARK[darkHex] = LIGHT[key];
 }
 
 /**
@@ -282,6 +287,25 @@ const EXTRA_DARK: Record<string, string> = {
   '#8494AA': DARK.textMuted,
 };
 
+// Purane/extra dark tokens ko reverse table me bhi daal dete hain light mode ke liye
+const EXTRA_LIGHT: Record<string, string> = {
+  '#0B1220': LIGHT.background,
+  '#091522': LIGHT.background,
+  '#111B2E': LIGHT.card,
+  '#111F30': LIGHT.card,
+  '#17283B': LIGHT.cardMuted,
+  '#26364E': LIGHT.border,
+  '#26384D': LIGHT.border,
+  '#354A61': LIGHT.borderStrong,
+  '#3B3021': '#FBE3BE',
+  '#3F2327': '#FECACA',
+  '#2A1A1E': '#FFF8F8',
+  '#2C1620': '#FFF5F7',
+};
+for (const [darkHex, lightHex] of Object.entries(EXTRA_LIGHT)) {
+  LIGHT_BY_DARK[darkHex.toUpperCase()] = lightHex;
+}
+
 /**
  * Text-token swap (mode ke hisaab se). Agar kisi screen ka text token galat
  * mode ki value le aata hai (ya mapping se dim value ban jaati hai) toh yeh
@@ -319,24 +343,85 @@ const LIGHT_TEXT_SWAPS: Record<string, string> = {
 };
 
 /**
- * Light hex → dark ink. Style values module load par banti hain, is liye
- * property ek getter ban jaata hai aur yeh function har read par chalta hai.
+ * Bidirectional style color mapping:
+ * - Module chahe light mode me load hua ho ya dark mode me, current themeIsDark
+ *   ke hisaab se sahi palette value milti hai.
+ * - Light mode me dark card `#0F1725` kabhi black nahi rehta → white `#FFFFFF` banta hai.
+ * - Dark mode me light card `#FFFFFF` kabhi white nahi rehta → ink `#0F1725` banta hai.
  */
 function themedStyleColor(value: unknown, property: string): unknown {
   if (typeof value !== 'string') return value;
 
+  const upper = value.toUpperCase();
+
   /* Wrong-mode text token → us mode ka readable text. */
   if (property === 'color') {
-    const swapped = (themeIsDark ? DARK_TEXT_SWAPS : LIGHT_TEXT_SWAPS)[value.toUpperCase()];
+    const swapped = (themeIsDark ? DARK_TEXT_SWAPS : LIGHT_TEXT_SWAPS)[upper];
     if (swapped) return swapped;
   }
 
-  if (!themeIsDark) return value;
+  /* -------------------------------------------------------------------------
+   * LIGHT MODE (Phone ya app jab light mode me ho)
+   * ------------------------------------------------------------------------- */
+  if (!themeIsDark) {
+    /* Shadow: dark mode black shadow se light mode navy shadow */
+    if (property === 'shadowColor') {
+      if (upper === '#000000' || upper === '#000') return LIGHT.shadowColor;
+      return value;
+    }
 
-  /* Palette ke rgba tokens (overlay / translucent card) bhi exact dark
-     counterpart follow karein. Pehle yeh branch sirf hex values tak pahunchti
-     thi, isliye kuch sheets/cards dark mode me light hi reh jaate the. */
-  const paletteMapped = DARK_BY_LIGHT[value.toUpperCase()];
+    /* Ink sheets/translucent overlay → light mode equivalents */
+    const inkSheet = value.match(/^rgba\(\s*12\s*,\s*19\s*,\s*30\s*,\s*([0-9.]+)\s*\)$/i);
+    if (inkSheet) {
+      return property === 'backgroundColor' ? `rgba(255, 255, 255, ${inkSheet[1]})` : value;
+    }
+    if (value === DARK.cardOverlay) return LIGHT.cardOverlay;
+    if (value === DARK.overlay) return LIGHT.overlay;
+
+    if (!value.startsWith('#')) return value;
+
+    /* Dark card / surfaces captured in dark mode → LIGHT mode surface */
+    if (property === 'backgroundColor') {
+      if (upper === DARK.card.toUpperCase() || upper === '#111B2E' || upper === '#111F30') {
+        return LIGHT.card;
+      }
+      if (upper === DARK.cardMuted.toUpperCase() || upper === '#17283B') {
+        return LIGHT.cardMuted;
+      }
+      if (upper === DARK.background.toUpperCase() || upper === '#0B1220' || upper === '#091522') {
+        return LIGHT.background;
+      }
+    }
+
+    /* Dark borders captured in dark mode → LIGHT mode border */
+    if (
+      property === 'borderColor' ||
+      property === 'borderTopColor' ||
+      property === 'borderBottomColor' ||
+      property === 'borderLeftColor' ||
+      property === 'borderRightColor'
+    ) {
+      if (upper === DARK.border.toUpperCase() || upper === '#26364E' || upper === '#26384D') {
+        return LIGHT.border;
+      }
+      if (upper === DARK.borderStrong.toUpperCase() || upper === '#354A61') {
+        return LIGHT.borderStrong;
+      }
+    }
+
+    /* Direct dark hex lookup in reverse palette table */
+    const lightMapped = LIGHT_BY_DARK[upper];
+    if (lightMapped !== undefined) return lightMapped;
+
+    /* Fallback for any unknown dark surface so it doesn't turn cards pitch black in light mode */
+    return fallbackLight(value, property);
+  }
+
+  /* -------------------------------------------------------------------------
+   * DARK MODE (Phone ya app jab dark mode me ho)
+   * ------------------------------------------------------------------------- */
+  /* Palette ke rgba tokens (overlay / translucent card) */
+  const paletteMapped = DARK_BY_LIGHT[upper];
   if (!value.startsWith('#') && paletteMapped !== undefined) return paletteMapped;
 
   /* White sheets (near-opaque) dark me ink sheets ban jaate hain. */
@@ -346,30 +431,57 @@ function themedStyleColor(value: unknown, property: string): unknown {
   }
   if (!value.startsWith('#')) return value;
 
-  const hex = value.toUpperCase();
-
-  /* Pure white — property ke hisaab se (card surface ya white text/icon). */
-  if (hex === '#FFFFFF' || hex === '#FFF') {
+  /* Pure white — property ke hisaab se (card surface = ink card, border = ink border). */
+  if (upper === '#FFFFFF' || upper === '#FFF') {
     const surfaceValue = WHITE_BY_PROPERTY[property];
     return surfaceValue ?? '#FFFFFF';
   }
   /* Shadow light mode waale navy shadow se black shadow ban jaata hai. */
   if (property === 'shadowColor') return DARK.shadowColor;
 
-  const surface = SURFACE_SAFE[hex];
+  const surface = SURFACE_SAFE[upper];
   if (surface) return property === 'backgroundColor' ? surface.bg : surface.fg;
 
-  const navy = NAVY_AS_TEXT[hex];
+  const navy = NAVY_AS_TEXT[upper];
   if (navy && property === 'color') return navy;
 
-  const extra = EXTRA_DARK[hex];
+  const extra = EXTRA_DARK[upper];
   if (extra !== undefined) return extra;
 
-  const mapped = DARK_BY_LIGHT[hex];
+  const mapped = DARK_BY_LIGHT[upper];
   if (mapped !== undefined) return mapped;
 
   /* Baaki kisi bhi light value ko luminance se ink surface bana dete hain. */
   return fallbackInk(value, property);
+}
+
+/** Luminance-based fallback — jo dark hex map me nahi hai uske liye (light mode me dark se bachane ko). */
+function fallbackLight(value: string, property: string): string {
+  const hex = value.slice(1);
+  if (hex.length !== 6) return value;
+  const rgb = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const lum = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+  const max = Math.max(...rgb);
+  const min = Math.min(...rgb);
+  const saturation = max === 0 ? 0 : (max - min) / max;
+  if (property === 'backgroundColor' && lum < 0.22 && saturation < 0.35) {
+    return lum < 0.12 ? LIGHT.card : LIGHT.cardMuted;
+  }
+  if (
+    (property === 'borderColor' ||
+      property === 'borderTopColor' ||
+      property === 'borderBottomColor' ||
+      property === 'borderLeftColor' ||
+      property === 'borderRightColor') &&
+    lum < 0.3 &&
+    saturation < 0.4
+  ) {
+    return LIGHT.border;
+  }
+  if (property === 'color' && lum > 0.8 && saturation < 0.2) {
+    return LIGHT.text;
+  }
+  return value;
 }
 
 /** Luminance-based fallback — jo hex map me nahi hai uske liye. */
@@ -381,7 +493,7 @@ function fallbackInk(value: string, property: string): string {
   const max = Math.max(...rgb);
   const min = Math.min(...rgb);
   const saturation = max === 0 ? 0 : (max - min) / max;
-  if (property === 'backgroundColor' && lum > 0.86 && saturation < 0.28) return lum > 0.96 ? DARK.card : DARK.cardMuted;
+  if (property === 'backgroundColor' && lum > 0.75 && saturation < 0.35) return lum > 0.94 ? DARK.card : DARK.cardMuted;
   if ((property === 'borderColor' || property === 'borderTopColor' || property === 'borderBottomColor' || property === 'borderLeftColor' || property === 'borderRightColor') && lum > 0.55 && saturation < 0.35) return DARK.borderStrong;
   if (property === 'color' && lum < 0.3 && saturation < 0.95) return DARK.text;
   return value;
