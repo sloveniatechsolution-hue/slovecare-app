@@ -11,19 +11,19 @@
  *   3. Payment Razorpay se hota hai (existing RazorpayCheckout component).
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppHeader from '../components/AppHeader';
 import Icon from '../components/Icon';
 import { AppButton, Card, GradientCard, Loader, Screen } from '../components/UI';
 import RazorpayCheckout, { CheckoutOrder } from '../components/RazorpayCheckout';
-import api, { DietPlanSubscriptionStatus } from '../api/api';
+import api, { ApiError, DietPlanSubscriptionStatus } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from '../navigation/types';
 
-import { colors, spacing, typography } from '../theme/theme';
+import { colors, gradients, radius, shadow, spacing, typography } from '../theme/theme';
 
 import { useThemePreference } from '../theme/ThemeContext';
 
@@ -38,7 +38,6 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
   const [status, setStatus] = useState<DietPlanSubscriptionStatus | null>(null);
   const [checkout, setCheckout] = useState<CheckoutOrder | null>(null);
   const [verifying, setVerifying] = useState(false);
-  const [payError, setPayError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
   /* ------------------------- status load (server authoritative) ------------------------- */
@@ -68,13 +67,11 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
   const startPayment = async () => {
     if (starting) return;
     setStarting(true);
-    setPayError(null);
     try {
       const order = await api.dietPlans.createPaymentOrder();
       if (!order.requiresPayment) {
         /* Server ne bola payment nahi chahiye (free week / already paid) —
            seedha plan form par jao. */
-        setStarting(false);
         await loadStatus();
         navigation.navigate('DietPlanner');
         return;
@@ -87,19 +84,35 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
         amountRupees: order.amountRupees,
       });
     } catch (e) {
-      setPayError((e as Error).message || 'Could not start payment. Please try again.');
+      const err = e as ApiError;
+      Alert.alert(
+        "Payment couldn't start",
+        err.message || 'Could not start payment. Please try again.',
+      );
     } finally {
       setStarting(false);
     }
   };
 
   /* ------------------------- payment result ------------------------- */
+
+  /**
+   * Backend DOUBLE verification (HMAC + Razorpay API status) — dono server par.
+   * Pending signature ref me rakh-te hain taaki retry stale-closure na ho.
+   */
+  const pendingVerifyRef = useRef<{
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  } | null>(null);
+
   const onPaymentResult = async (signature: {
     razorpay_order_id: string;
     razorpay_payment_id: string;
     razorpay_signature: string;
   }) => {
     if (!checkout) return;
+    pendingVerifyRef.current = signature;
     setVerifying(true);
     try {
       await api.dietPlans.verifyPayment({
@@ -107,22 +120,67 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
         razorpay_payment_id: signature.razorpay_payment_id,
         razorpay_signature: signature.razorpay_signature,
       });
+      pendingVerifyRef.current = null;
       setCheckout(null);
       setVerifying(false);
       await loadStatus();
       navigation.navigate('DietPlanner');
     } catch (e) {
       setVerifying(false);
-      setPayError((e as Error).message || 'Payment verification failed. Please try again.');
+      const err = e as ApiError;
+      Alert.alert(
+        'Payment received — confirmation pending',
+        err.message ||
+          'We could not confirm your payment just now. You will not be charged again — please retry.',
+        [
+          { text: 'Retry confirmation', onPress: () => retryVerify() },
+          { text: 'Do it later', style: 'cancel' },
+        ],
+      );
+    }
+  };
+
+  /** Verify dobara (ref se) — stale-closure safe. */
+  const retryVerify = async () => {
+    const payload = pendingVerifyRef.current;
+    if (!payload) {
+      return;
+    }
+    setVerifying(true);
+    try {
+      await api.dietPlans.verifyPayment(payload);
+      pendingVerifyRef.current = null;
+      setCheckout(null);
+      setVerifying(false);
+      await loadStatus();
+      navigation.navigate('DietPlanner');
+    } catch (e) {
+      setVerifying(false);
+      const err = e as ApiError;
+      Alert.alert('Still not confirmed', err.message || 'We could not confirm your payment.', [
+        { text: 'Retry', onPress: () => retryVerify() },
+        {
+          text: 'Do it later',
+          style: 'cancel',
+          onPress: () => {
+            pendingVerifyRef.current = null;
+          },
+        },
+      ]);
     }
   };
 
   const onPaymentDismiss = () => {
+    if (verifying) {
+      return;
+    }
     setCheckout(null);
+    Alert.alert('Payment not completed', 'No money was charged. You can complete the payment whenever you are ready.');
   };
 
   const onPaymentError = (message: string) => {
-    setPayError(message);
+    setCheckout(null);
+    Alert.alert("Payment couldn't start", message);
   };
 
   /* ------------------------- render ------------------------- */
@@ -198,18 +256,40 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
           ) : (
             <>
               {/* ── Hero gradient card ── */}
-              <GradientCard style={styles.heroCard} from={colors.violet} to={colors.primary}>
-                <View style={styles.heroIcon}>
-                  <Icon name="utensils" size={22} color={colors.textInverse} />
+              <GradientCard style={styles.heroCard} from={gradients.diet[0]} to={gradients.diet[1]}>
+                {/* decorative glow blobs */}
+                <View style={styles.blobLarge} pointerEvents="none" />
+                <View style={styles.blobSmall} pointerEvents="none" />
+
+                <View style={styles.heroTopRow}>
+                  <View style={styles.heroIcon}>
+                    <Icon name="utensils" size={24} color={colors.textInverse} />
+                  </View>
+                  <View style={styles.heroChip}>
+                    <Icon name="sparkles" size={11} color={colors.textInverse} />
+                    <Text style={styles.heroChipText}>AI-POWERED</Text>
+                  </View>
                 </View>
-                <Text style={styles.heroTitle}>AI Weekly Diet Planner</Text>
+
+                <Text style={styles.heroTitle}>{'AI Weekly\nDiet Planner'}</Text>
                 <Text style={styles.heroSub}>
-                  Get a personalized 7-day diet plan based on your health goals and food preferences.
+                  A personalized 7-day diet plan built around your health goals, routine and food
+                  preferences.
                 </Text>
 
-                <View style={styles.verifiedRow}>
-                  <Icon name="shield-check" size={14} color={colors.textInverse} />
-                  <Text style={styles.verifiedText}>Doctor &amp; Gym Trainer Verified</Text>
+                <View style={styles.heroChipsRow}>
+                  <View style={styles.glassChip}>
+                    <Icon name="shield-check" size={12} color={colors.textInverse} />
+                    <Text style={styles.glassChipText}>Doctor verified</Text>
+                  </View>
+                  <View style={styles.glassChip}>
+                    <Icon name="award" size={12} color={colors.textInverse} />
+                    <Text style={styles.glassChipText}>Trainer approved</Text>
+                  </View>
+                  <View style={styles.glassChip}>
+                    <Icon name="leaf" size={12} color={colors.textInverse} />
+                    <Text style={styles.glassChipText}>7-day plan</Text>
+                  </View>
                 </View>
 
                 <AppButton
@@ -226,62 +306,114 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
                       navigation.navigate('DietPlanner');
                     }
                   }}
-                  style={styles.heroCta}
+                  style={[styles.heroCta, shadow.glow]}
                 />
 
-                <Text style={styles.heroNote}>
-                  {isFree
-                    ? 'Your first week is completely free!'
-                    : `First week free · ₹${price}/week after that`}
-                </Text>
+                <View style={styles.heroNoteRow}>
+                  <Icon name="rupee" size={12} color={colors.textInverse} />
+                  <Text style={styles.heroNote}>
+                    {isFree
+                      ? 'Your first week is completely free!'
+                      : `First week free · ₹${price}/week after that`}
+                  </Text>
+                </View>
               </GradientCard>
 
-              {/* ── Features ── */}
-              <Card style={styles.featuresCard}>
+              {/* ── What you get ── */}
+              <Card style={styles.sectionCard}>
+                <Text style={[typography.eyebrow, { marginBottom: 4 }]}>Included</Text>
                 <Text style={typography.h4}>What you get</Text>
                 {[
-                  { icon: 'calendar' as const, text: 'Updated every week for you' },
-                  { icon: 'download' as const, text: 'Downloadable PDF of your plan' },
-                  { icon: 'sparkles' as const, text: 'Personalized meals for your goals' },
-                  { icon: 'shield-check' as const, text: 'Verified by doctors & gym trainers' },
+                  {
+                    icon: 'calendar' as const,
+                    bg: colors.infoLight,
+                    fg: colors.blue,
+                    title: 'Refreshed every week',
+                    sub: 'A new plan is ready for you each week.',
+                  },
+                  {
+                    icon: 'download' as const,
+                    bg: colors.primaryLight,
+                    fg: colors.primary,
+                    title: 'Downloadable PDF',
+                    sub: 'Export your plan and follow it offline.',
+                  },
+                  {
+                    icon: 'sparkles' as const,
+                    bg: colors.violetSoft,
+                    fg: colors.violet,
+                    title: 'Personalized meals',
+                    sub: 'Built around your goals and preferences.',
+                  },
+                  {
+                    icon: 'shield-check' as const,
+                    bg: colors.successLight,
+                    fg: colors.success,
+                    title: 'Expert verified',
+                    sub: 'By doctors & gym trainers.',
+                  },
                 ].map(f => (
-                  <View key={f.text} style={styles.featureRow}>
-                    <View style={styles.featureIcon}>
-                      <Icon name={f.icon} size={14} color={colors.primary} />
+                  <View key={f.title} style={styles.featureRow}>
+                    <View style={[styles.featureIcon, { backgroundColor: f.bg }]}>
+                      <Icon name={f.icon} size={17} color={f.fg} />
                     </View>
-                    <Text style={[typography.small, { flex: 1 }]}>{f.text}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={typography.smallMedium}>{f.title}</Text>
+                      <Text style={[typography.caption, { marginTop: 1 }]}>{f.sub}</Text>
+                    </View>
+                  </View>
+                ))}
+              </Card>
+
+              {/* ── How it works ── */}
+              <Card style={styles.sectionCard}>
+                <Text style={[typography.eyebrow, { marginBottom: 4 }]}>Process</Text>
+                <Text style={typography.h4}>How it works</Text>
+                {[
+                  { n: '1', title: 'Share your details', sub: 'A few quick questions about your body and routine.' },
+                  { n: '2', title: 'AI builds your plan', sub: 'A nutritionist-style plan is generated for your week.' },
+                  { n: '3', title: 'Follow & download', sub: 'Use the plan all week and export it as a PDF.' },
+                ].map(s => (
+                  <View key={s.n} style={styles.stepRow}>
+                    <View style={styles.stepNum}>
+                      <Text style={styles.stepNumText}>{s.n}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={typography.smallMedium}>{s.title}</Text>
+                      <Text style={[typography.caption, { marginTop: 1 }]}>{s.sub}</Text>
+                    </View>
                   </View>
                 ))}
               </Card>
 
               {/* ── Pricing ── */}
-              <Card style={styles.pricingCard}>
+              <Card style={styles.sectionCard}>
+                <Text style={[typography.eyebrow, { marginBottom: 4 }]}>Pricing</Text>
                 <Text style={typography.h4}>Simple pricing</Text>
                 <View style={styles.priceRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={typography.smallMedium}>Week 1</Text>
-                    <Text style={[typography.h3, { color: colors.success }]}>FREE</Text>
+                  <View
+                    style={[styles.priceTile, { backgroundColor: colors.successLight, borderColor: 'transparent' }]}
+                  >
+                    <Text style={typography.caption}>Week 1</Text>
+                    <Text style={[styles.priceTileValue, { color: colors.success }]}>FREE</Text>
+                    <Text style={styles.priceTileNote}>Full 7-day plan</Text>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={typography.smallMedium}>Week 2 onwards</Text>
-                    <Text style={[typography.h3, { color: colors.text }]}>₹{price}/week</Text>
+                  <View style={styles.priceTile}>
+                    <Text style={typography.caption}>Week 2 onwards</Text>
+                    <Text style={styles.priceTileValue}>
+                      ₹{price}
+                      <Text style={styles.priceUnit}>/week</Text>
+                    </Text>
+                    <Text style={styles.priceTileNote}>Weekly · cancel anytime</Text>
                   </View>
                 </View>
-                <View style={styles.divider} />
-                <Text style={[typography.caption, { color: colors.textMuted }]}>
-                  One plan per week. Payment is weekly — cancel anytime.
-                </Text>
+                <View style={styles.priceFootRow}>
+                  <Icon name="check-circle" size={14} color={colors.success} />
+                  <Text style={[typography.caption, { flex: 1 }]}>
+                    One plan per week. Payment is weekly — cancel anytime.
+                  </Text>
+                </View>
               </Card>
-
-              {/* ── Pay error ── */}
-              {payError ? (
-                <Card style={[styles.noteCard, { backgroundColor: colors.dangerLight, borderColor: colors.danger }]}>
-                  <View style={styles.noteRow}>
-                    <Icon name="alert-triangle" size={16} color={colors.danger} />
-                    <Text style={[typography.small, { flex: 1, color: colors.danger }]}>{payError}</Text>
-                  </View>
-                </Card>
-              ) : null}
             </>
           )}
         </ScrollView>
@@ -292,6 +424,7 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
         visible={Boolean(checkout)}
         order={checkout ?? { keyId: '', orderId: '', amount: 0, currency: 'INR', amountRupees: 0 }}
         prefill={user ? { name: user.name, email: user.email, contact: user.phone } : undefined}
+        description="Weekly Diet Plan"
         verifying={verifying}
         onResult={onPaymentResult}
         onDismiss={onPaymentDismiss}
@@ -316,21 +449,62 @@ const styles = StyleSheet.create({
   heroCard: {
     marginBottom: spacing.lg,
     padding: spacing.lg,
+    overflow: 'hidden',
+  },
+  /* Decorative glow blobs — gradient card ke peeche soft light. */
+  blobLarge: {
+    position: 'absolute',
+    top: -60,
+    right: -40,
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  blobSmall: {
+    position: 'absolute',
+    bottom: -50,
+    left: -30,
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
   },
   heroIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
+  },
+  heroChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+  },
+  heroChipText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: colors.textInverse,
   },
   heroTitle: {
-    fontSize: 22,
+    fontSize: 26,
+    lineHeight: 32,
     fontWeight: '800',
     color: colors.textInverse,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
   heroSub: {
     fontSize: 13.5,
@@ -338,58 +512,121 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.85)',
     marginTop: spacing.sm,
   },
-  verifiedRow: {
+  /* Glass chips row — "Doctor verified / Trainer approved / 7-day plan". */
+  heroChipsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 6,
     marginTop: spacing.md,
   },
-  verifiedText: {
-    fontSize: 12,
-    fontWeight: '600',
+  glassChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+  },
+  glassChipText: {
+    fontSize: 11,
+    fontWeight: '700',
     color: colors.textInverse,
-    opacity: 0.9,
   },
   heroCta: {
     marginTop: spacing.lg,
   },
+  heroNoteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    marginTop: spacing.md,
+  },
   heroNote: {
     fontSize: 11.5,
     color: 'rgba(255,255,255,0.75)',
-    textAlign: 'center',
-    marginTop: spacing.sm,
   },
-  featuresCard: {
+  /* ── Premium sections (features / how-it-works / pricing) ── */
+  sectionCard: {
     marginBottom: spacing.lg,
+    padding: spacing.lg,
   },
   featureRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: spacing.md,
+    marginTop: spacing.md,
   },
   featureIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.primaryLight,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pricingCard: {
-    marginBottom: spacing.lg,
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    marginTop: spacing.md,
+  },
+  stepNum: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  stepNumText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primary,
   },
   priceRow: {
     flexDirection: 'row',
-    marginTop: spacing.sm,
-    gap: spacing.lg,
+    marginTop: spacing.md,
+    gap: spacing.sm,
   },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginVertical: spacing.md,
+  priceTile: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    backgroundColor: colors.cardMuted,
   },
-  noteCard: { marginBottom: spacing.md, borderColor: colors.border },
+  priceTileValue: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    color: colors.text,
+    marginTop: 2,
+  },
+  priceTileNote: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  priceUnit: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  priceFootRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
   noteRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
   weekPlanCard: { marginBottom: spacing.md },
 });

@@ -46,6 +46,8 @@ export interface RazorpayCheckoutProps {
   visible: boolean;
   order: CheckoutOrder;
   prefill?: { name?: string; email?: string; contact?: string };
+  /** Razorpay sheet me dikhne wala description (default: "Booking payment"). */
+  description?: string;
   /** Backend verify chal raha hai — UI block + close disable. */
   verifying: boolean;
   onResult: (signature: {
@@ -99,17 +101,31 @@ const openExternally = (url: string) => {
 function buildCheckoutHtml(
   order: CheckoutOrder,
   prefill: RazorpayCheckoutProps['prefill'],
+  dark: boolean,
+  description?: string,
 ): string {
+  /* Palette read build-time par hota hai — is liye memo theme change par
+     dobara chalega (pehle sirf `order`/`prefill` par depend karta tha aur
+     WebView hamesha light rehta tha). */
+  const theme = {
+    background: colors.background,
+    text: colors.textMuted,
+    accent: colors.navy,
+  };
+  void dark; // memo dependency — colours already current palette se aate hain
+  /* Description user-controlled nahi hai (app se aata hai) — phir bhi
+     quotes escape kar dete hain taaki HTML me break na ho. */
+  const safeDescription = String(description || 'Booking payment').replace(/["'\\<>]/g, '');
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <style>
-  html, body { margin: 0; padding: 0; background: #ffffff; height: 100%; }
+  html, body { margin: 0; padding: 0; background: ${theme.background}; height: 100%; }
   body { display: flex; align-items: center; justify-content: center;
          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-  .boot { color: #64748b; font-size: 14px; }
+  .boot { color: ${theme.text}; font-size: 14px; }
 </style>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </head>
@@ -136,9 +152,9 @@ function buildCheckoutHtml(
         amount: ${safeJson(order.amount)},
         currency: ${safeJson(order.currency)},
         name: 'SloveCare',
-        description: 'Booking payment',
+        description: ${safeJson(safeDescription)},
         prefill: ${safeJson(prefill || {})},
-        theme: { color: ${safeJson(colors.navy)} },
+        theme: { color: ${safeJson(theme.accent)} },
         handler: function (response) {
           post({
             type: 'success',
@@ -179,17 +195,26 @@ export default function RazorpayCheckout({
   visible,
   order,
   prefill,
+  description,
   verifying,
   onResult,
   onDismiss,
   onError,
 }: RazorpayCheckoutProps): React.JSX.Element | null {
-  useThemePreference();
+  const { dark } = useThemePreference();
   const [loadFailed, setLoadFailed] = useState(false);
   const [webKey, setWebKey] = useState(0);
   const retriesRef = useRef(0);
   const wasOpenRef = useRef(false);
-  const html = useMemo(() => buildCheckoutHtml(order, prefill), [order, prefill]);
+  /**
+   * Checkout HTML theme ke saath rebuild hoti hai — pehle `useMemo` sirf
+   * `order`/`prefill` par depend karta tha, is liye WebView page hamesha
+   * light (white) rehta tha aur palette ka stale colour use karta tha.
+   */
+  const html = useMemo(
+    () => buildCheckoutHtml(order, prefill, dark, description),
+    [order, prefill, dark, description],
+  );
 
   // Sheet dobara khule to fresh state — purana error/retry na aaye
   // (iOS par Modal ke children mounted rehte hain, isliye WebView bhi naya chahiye).
