@@ -36,28 +36,20 @@ export function Screen({
   style?: StyleProp<ViewStyle>;
   backgroundColor?: string;
 }): React.JSX.Element {
-  /* Theme subscription — card surface colors dynamic getters se aate hain. */
-  useThemePreference();
-  const themeKey = useThemeKey();
-
   /**
-   * React Native ka style diffing (ReactNativeAttributePayload → `diffProperties`)
-   * `prevProp === nextProp` par seedha `continue` kar deta hai, aur style arrays me
-   * bhi har element ki reference compare hoti hai. Matlab: jitne bhi styles
-   * `StyleSheet.create` se bane hain (stable object reference), unki getter-waali
-   * colour values dobara kabhi diff hi nahi hoti — sirf naye inline objects ke
-   * values update hote hain. Isi wajah se theme toggle karne par screen
-   * "aadha-adhura" theme hoti thi aur hard refresh chahiye padta tha.
+   * Theme subscription — isse component context change par dobara render
+   * hota hai, aur `colors.*` (Proxy) current palette se padha jaata hai.
    *
-   * themeKey badalne par poora subtree naye sire se mount hota hai — bilkul hard
-   * refresh jaisa result, bina app restart/state khoye. Scroll position ja rehta
-   * hai, lekin poori screen ek hi frame me consistently theme hoti hai.
+   * ⚠️ Pehle yahan `<React.Fragment key={themeKey}>` se poora subtree remount
+   * hota tha. Wo ek safety net tha (module-level styles refresh karne ke liye)
+   * par uski wajah se har theme switch par scroll position, form state aur
+   * animations reset ho jaate the. Ab colour mapping EXACT hai (token
+   * registry), is liye remount ki zaroorat nahi — theme normal re-render se
+   * propagate hota hai aur navigation/UX nahi toot-ta.
    */
-  return (
-    <React.Fragment key={themeKey}>
-      <View style={[{ flex: 1, backgroundColor }, style]}>{children}</View>
-    </React.Fragment>
-  );
+  useThemePreference();
+
+  return <View style={[{ flex: 1, backgroundColor }, style]}>{children}</View>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -77,6 +69,8 @@ export function GradientCard({
   style?: StyleProp<ViewStyle>;
   diagonal?: boolean;
 }): React.JSX.Element {
+  /* Theme subscription — gradient stops current palette se aate hain. */
+  useThemePreference();
   const gradientId = `grad-${useId().replace(/:/g, '')}`;
   return (
     <View style={style}>
@@ -154,6 +148,8 @@ export function AppButton({
   style?: StyleProp<ViewStyle>;
   full?: boolean;
 }): React.JSX.Element {
+  /* Theme subscription — button palette current mode se aata hai. */
+  useThemePreference();
   const palette: Record<ButtonVariant, { bg: string; fg: string; border?: string }> = {
     primary: { bg: colors.blue, fg: colors.textInverse },
     navy: { bg: colors.navy, fg: colors.textInverse },
@@ -216,6 +212,8 @@ export function TextField({
   secureTextEditable,
   ...rest
 }: FieldProps): React.JSX.Element {
+  /* Theme subscription — field ka border/text current palette se aata hai. */
+  useThemePreference();
   const [hidden, setHidden] = useState(Boolean(secureTextEditable));
   const [focused, setFocused] = useState(false);
   const inputRef = React.useRef<React.ElementRef<typeof TextInput>>(null);
@@ -308,6 +306,9 @@ export function SelectField({
   emptyText?: string;
   containerStyle?: StyleProp<ViewStyle>;
 }): React.JSX.Element {
+  /* Theme subscription + extraData — dropdown rows current palette se paint hon. */
+  useThemePreference();
+  const themeKey = useThemeKey();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   // Android navigation bar / gesture bar ke peeche sheet na chhup jaye
@@ -401,6 +402,7 @@ export function SelectField({
 
             <FlatList
               data={filtered}
+              extraData={themeKey}
               keyExtractor={(item, index) => `${item.value}_${index}`}
               keyboardShouldPersistTaps="always"
               style={{ maxHeight: 320 }}
@@ -457,6 +459,7 @@ export function Chip({
   onPress?: () => void;
   icon?: IconName;
 }): React.JSX.Element {
+  useThemePreference();
   return (
     <Pressable
       onPress={onPress}
@@ -487,6 +490,7 @@ export function Badge({
   tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'brand';
   icon?: IconName;
 }): React.JSX.Element {
+  useThemePreference();
   const tones: Record<string, { bg: string; fg: string }> = {
     neutral: { bg: colors.cardMuted, fg: colors.textSecondary },
     success: { bg: colors.successLight, fg: colors.success },
@@ -520,6 +524,7 @@ export function Rating({
   size?: number;
   showValue?: boolean;
 }): React.JSX.Element {
+  useThemePreference();
   const rounded = Math.round(value);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -563,6 +568,7 @@ export function SectionHeader({
   actionLabel?: string;
   onAction?: () => void;
 }): React.JSX.Element {
+  useThemePreference();
   return (
     <View style={styles.sectionHeader}>
       <View style={{ flex: 1 }}>
@@ -594,6 +600,7 @@ export function Loader({
   label?: string;
   color?: string;
 }): React.JSX.Element {
+  useThemePreference();
   return (
     <View style={styles.stateBox}>
       <ActivityIndicator size="large" color={color} />
@@ -615,6 +622,7 @@ export function EmptyState({
   actionLabel?: string;
   onAction?: () => void;
 }): React.JSX.Element {
+  useThemePreference();
   return (
     <View style={styles.stateBox}>
       <View style={styles.stateIcon}>
@@ -640,6 +648,7 @@ export function ErrorState({
   message?: string;
   onRetry?: () => void;
 }): React.JSX.Element {
+  useThemePreference();
   return (
     <View style={styles.stateBox}>
       <View style={[styles.stateIcon, { backgroundColor: colors.dangerLight }]}>
@@ -657,6 +666,7 @@ export function ErrorState({
 
 /** Block-style skeleton for list loading. */
 export function SkeletonBlock({ height = 16, width = '100%', style }: { height?: number; width?: number | string; style?: StyleProp<ViewStyle> }): React.JSX.Element {
+  useThemePreference();
   return <View style={[{ height, width, backgroundColor: colors.skeleton, borderRadius: 8 }, style]} />;
 }
 
@@ -673,6 +683,7 @@ export function InfoRow({
   value?: React.ReactNode;
   icon?: IconName;
 }): React.JSX.Element {
+  useThemePreference();
   return (
     <View style={styles.infoRow}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>

@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Linking, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppHeader from '../components/AppHeader';
@@ -15,12 +15,13 @@ import { RootStackParamList } from '../navigation/types';
 
 import { colors, radius, spacing, typography } from '../theme/theme';
 
-import { useThemePreference } from '../theme/ThemeContext';
+import { useThemeKey, useThemePreference } from '../theme/ThemeContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'LabReports'>;
 
 export default function LabReportsScreen({ navigation }: Props): React.JSX.Element {
   useThemePreference();
+  const themeKey = useThemeKey();
   const insets = useSafeAreaInsets();
   const [data, setData] = useState<UserDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -80,6 +81,7 @@ export default function LabReportsScreen({ navigation }: Props): React.JSX.Eleme
       ) : (
         <FlatList
           data={reports}
+          extraData={themeKey}
           keyExtractor={item => item.id}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.xxxl, gap: spacing.md }}
           showsVerticalScrollIndicator={false}
@@ -113,7 +115,22 @@ export default function LabReportsScreen({ navigation }: Props): React.JSX.Eleme
                 <View style={{ gap: spacing.sm }}>
                   {prescriptions.map(rx => (
                     <Card key={`${rx.bookingId}-${rx.id}`}>
-                      <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>
+                      <Pressable
+                        onPress={() =>
+                          navigation.navigate('PrescriptionDetail', {
+                            bookingId: rx.bookingId,
+                            prescription: rx,
+                            doctorName: rx.doctorName || rx.vendorName,
+                            serviceName: rx.serviceName,
+                          })
+                        }
+                        style={({ pressed }) => [
+                          { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
+                          pressed && { opacity: 0.85 },
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open prescription: ${rx.diagnosis ?? 'prescription'}`}
+                      >
                         <View style={styles.rxIcon}>
                           <Icon name="file-text" size={20} color={colors.primary} />
                         </View>
@@ -122,11 +139,12 @@ export default function LabReportsScreen({ navigation }: Props): React.JSX.Eleme
                             {rx.diagnosis}
                           </Text>
                           <Text style={typography.caption} numberOfLines={1}>
-                            {rx.doctorName} • {rx.date} • {rx.medicines?.length ?? 0} medicines
+                            {rx.doctorName || rx.vendorName} • {rx.date} • {rx.medicines?.length ?? 0} medicines
                           </Text>
                         </View>
                         <Badge label="Ready" tone="success" />
-                      </View>
+                        <Icon name="chevron-right" size={16} color={colors.textMuted} />
+                      </Pressable>
                       {rx.files && rx.files.length > 0 ? (
                         <View style={{ gap: 6, marginTop: spacing.sm }}>
                           {rx.files.map((file, index) => (

@@ -1,11 +1,36 @@
 <resources>
 
-    <!-- Base application theme. -->
+    <!--
+        Base application theme.
+
+        ⚠️ DayNight parent rakha hai taaki native dialogs (Alert.alert) phone ke
+        theme ko follow karein. Lekin `android:windowBackground` aur system bars
+        app ke IN-APP theme ko follow karte hain — is liye transparent +
+        contrast-enforcement-off rakha hai:
+
+        • `navigationBarColor` / `statusBarColor` transparent — nav bar ka
+          black/grey band screen ke bottom par nahi dikhta.
+        • `enforceNavigationBarContrast=false` — API 29+ ka translucent scrim
+          hat jaata hai (wahi "black strip" jo Light Mode me bhi rehta tha).
+        • `windowLightNavigationBar` / `windowLightStatusBar` — icons ki
+          visibility light surface ke liye.
+
+        Window background app ke light background se match karta hai; JS layer
+        har screen ka background khud paint karti hai.
+    -->
     <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <!-- Customize your theme here. -->
         <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
         <item name="android:windowBackground">#F5F7FB</item>
         <item name="android:forceDarkAllowed">false</item>
+
+        <!-- Edge-to-edge: system bars transparent, app ke content ke upar. -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <!-- API 29+ ka default translucent scrim hatata hai. -->
+        <item name="android:enforceNavigationBarContrast">false</item>
     </style>
 
 </resources>

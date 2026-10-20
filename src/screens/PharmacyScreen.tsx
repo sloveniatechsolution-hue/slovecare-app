@@ -15,12 +15,13 @@ import { RootStackParamList } from '../navigation/types';
 
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
 
-import { useThemePreference } from '../theme/ThemeContext';
+import { useThemeKey, useThemePreference } from '../theme/ThemeContext';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function PharmacyScreen(): React.JSX.Element {
   useThemePreference();
+  const themeKey = useThemeKey();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
 
@@ -122,6 +123,7 @@ export default function PharmacyScreen(): React.JSX.Element {
       ) : (
         <FlatList
           data={medicines}
+          extraData={themeKey}
           keyExtractor={item => item.id}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 140 }}
           showsVerticalScrollIndicator={false}

@@ -16,6 +16,7 @@ import type { CallEvent, CallState, CallEndReason } from '../consultation/types'
 import { RootStackParamList } from '../navigation/types';
 
 import { colors, radius, spacing, typography } from '../theme/theme';
+import { useThemePreference } from '../theme/ThemeContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'VideoCall'>;
 
@@ -49,6 +50,13 @@ function durationLabel(seconds: number): string {
 export default function VideoCallScreen({ navigation, route }: Props): React.JSX.Element {
   const { bookingId, peerName } = route.params;
   const insets = useSafeAreaInsets();
+  /**
+   * Theme subscription — call screen hamesha dark hai (call UI convention),
+   * is liye uske surfaces `FIXED_COLORS` me registered hain aur kabhi
+   * Light Mode me white nahi hote. Ye subscription is liye hai ki screen ke
+   * theme-aware hisse (AppButton, Icon) turant update hon.
+   */
+  useThemePreference();
 
   const [session, setSession] = useState<VideoCallSession | null>(null);
   const [state, setState] = useState<CallState>('idle');

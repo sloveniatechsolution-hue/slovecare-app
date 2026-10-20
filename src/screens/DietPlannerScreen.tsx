@@ -607,7 +607,7 @@ export default function DietPlannerScreen({ navigation }: Props): React.JSX.Elem
   if (!isLoggedIn) {
     return (
       <Screen>
-        <AppHeader title="AI Weekly Diet Planner" onBack={() => navigation.goBack()} />
+        <AppHeader title="Weekly Diet Planner" onBack={() => navigation.goBack()} />
         <View style={styles.authBox}>
           <Card>
             <View style={styles.authIcon}>
@@ -632,7 +632,7 @@ export default function DietPlannerScreen({ navigation }: Props): React.JSX.Elem
   if (weekPlanExists && existingPlanId) {
     return (
       <Screen>
-        <AppHeader title="AI Weekly Diet Planner" onBack={() => navigation.goBack()} />
+        <AppHeader title="Weekly Diet Planner" onBack={() => navigation.goBack()} />
         <View style={styles.authBox}>
           <Card>
             <View style={styles.authIcon}>
@@ -662,7 +662,7 @@ export default function DietPlannerScreen({ navigation }: Props): React.JSX.Elem
   return (
     <Screen>
       <AppHeader
-        title="AI Weekly Diet Planner"
+        title="Weekly Diet Planner"
         subtitle={`Step ${step + 1} of 4 · ${STEP_TITLES[step]}`}
         onBack={() => (step === 0 ? navigation.goBack() : goBack())}
       />
@@ -1040,7 +1040,7 @@ export default function DietPlannerScreen({ navigation }: Props): React.JSX.Elem
                 <View style={styles.noteRow}>
                   <Icon name="shield-check" size={16} color={colors.primary} />
                   <Text style={[typography.small, { flex: 1 }]}>
-                    This plan is general AI-generated nutrition guidance — not a medical diagnosis or a substitute for
+                    This plan is general nutrition guidance only — not a medical diagnosis or a substitute for
                     professional advice. Calorie and nutrient values are estimates. Talk to a doctor or registered
                     dietitian before making big diet changes.
                   </Text>

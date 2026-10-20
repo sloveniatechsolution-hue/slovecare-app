@@ -188,7 +188,7 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
   if (!isLoggedIn) {
     return (
       <Screen>
-        <AppHeader title="AI Weekly Diet Planner" onBack={() => navigation.goBack()} />
+        <AppHeader title="Weekly Diet Planner" onBack={() => navigation.goBack()} />
         <View style={styles.authBox}>
           <Card>
             <View style={styles.authIcon}>
@@ -216,7 +216,7 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
 
   return (
     <Screen>
-      <AppHeader title="AI Weekly Diet Planner" onBack={() => navigation.goBack()} />
+      <AppHeader title="Weekly Diet Planner" onBack={() => navigation.goBack()} />
 
       {loading ? (
         <View style={styles.loaderBox}>
@@ -267,11 +267,11 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
                   </View>
                   <View style={styles.heroChip}>
                     <Icon name="sparkles" size={11} color={colors.textInverse} />
-                    <Text style={styles.heroChipText}>AI-POWERED</Text>
+                    <Text style={styles.heroChipText}>PREMIUM PLAN</Text>
                   </View>
                 </View>
 
-                <Text style={styles.heroTitle}>{'AI Weekly\nDiet Planner'}</Text>
+                <Text style={styles.heroTitle}>{'Weekly\nDiet Planner'}</Text>
                 <Text style={styles.heroSub}>
                   A personalized 7-day diet plan built around your health goals, routine and food
                   preferences.
@@ -279,12 +279,12 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
 
                 <View style={styles.heroChipsRow}>
                   <View style={styles.glassChip}>
-                    <Icon name="shield-check" size={12} color={colors.textInverse} />
-                    <Text style={styles.glassChipText}>Doctor verified</Text>
+                    <Icon name="stethoscope" size={12} color={colors.textInverse} />
+                    <Text style={styles.glassChipText}>Doctor reviewed</Text>
                   </View>
                   <View style={styles.glassChip}>
                     <Icon name="award" size={12} color={colors.textInverse} />
-                    <Text style={styles.glassChipText}>Trainer approved</Text>
+                    <Text style={styles.glassChipText}>Trainer reviewed</Text>
                   </View>
                   <View style={styles.glassChip}>
                     <Icon name="leaf" size={12} color={colors.textInverse} />
@@ -346,11 +346,11 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
                     sub: 'Built around your goals and preferences.',
                   },
                   {
-                    icon: 'shield-check' as const,
+                    icon: 'stethoscope' as const,
                     bg: colors.successLight,
                     fg: colors.success,
-                    title: 'Expert verified',
-                    sub: 'By doctors & gym trainers.',
+                    title: 'Expert-reviewed',
+                    sub: 'Made for your body, backed by experts.',
                   },
                 ].map(f => (
                   <View key={f.title} style={styles.featureRow}>
@@ -371,7 +371,7 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
                 <Text style={typography.h4}>How it works</Text>
                 {[
                   { n: '1', title: 'Share your details', sub: 'A few quick questions about your body and routine.' },
-                  { n: '2', title: 'AI builds your plan', sub: 'A nutritionist-style plan is generated for your week.' },
+                  { n: '2', title: 'Your plan is ready', sub: 'A nutritionist-style plan is prepared for your week.' },
                   { n: '3', title: 'Follow & download', sub: 'Use the plan all week and export it as a PDF.' },
                 ].map(s => (
                   <View key={s.n} style={styles.stepRow}>

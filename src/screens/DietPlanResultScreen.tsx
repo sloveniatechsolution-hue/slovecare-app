@@ -48,7 +48,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'DietPlanResult'>;
 /* ------------------------------- constants ------------------------------ */
 
 const DISCLAIMER_FALLBACK =
-  'This AI-generated plan provides general nutrition guidance only. It is not a medical diagnosis or a ' +
+  'This plan provides general nutrition guidance only. It is not a medical diagnosis or a ' +
   'substitute for advice from a doctor or registered dietitian. All values are estimates.';
 
 /** Meal key → icon + display name. */

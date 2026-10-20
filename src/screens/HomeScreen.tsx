@@ -329,7 +329,7 @@ export default function HomeScreen(): React.JSX.Element {
         {/* ----------------------- AI Weekly Diet Planner ---------------------- */}
         <View style={styles.section}>
           <SectionHeader
-            title="AI Weekly Diet Planner"
+            title="Weekly Diet Planner"
             subtitle="Personalized 7-day meal plan for your goals"
           />
           <GradientCard style={styles.dietCard} from={gradients.diet[0]} to={gradients.diet[1]}>
@@ -337,7 +337,7 @@ export default function HomeScreen(): React.JSX.Element {
               <View style={styles.dietIcon}>
                 <Icon name="utensils" size={18} color={colors.textInverse} />
               </View>
-              <Text style={styles.dietTitle}>AI Weekly Diet Planner</Text>
+              <Text style={styles.dietTitle}>Weekly Diet Planner</Text>
               <Text style={styles.dietSub}>
                 Get a personalized 7-day diet plan based on your health goals and food preferences.
               </Text>

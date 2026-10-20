@@ -153,7 +153,12 @@ export function DegreeVerifiedBadge({ doctor }: { doctor: Doctor }): React.JSX.E
 export function DoctorCard({ doctor, onPress, variant = 'grid' }: DoctorCardProps): React.JSX.Element {
   useThemePreference();
   const horizontal = variant === 'row';
+  const isLab = doctor.type === 'lab';
   const fee = visitFee(doctor);
+  /* Lab ka daam test-wise hota hai — card par home-collection fee dikhti hai
+     (0 = free pickup). "Fee on request" lab ke liye matlab nahi banata. */
+  const collectionFee =
+    doctor.labDetails?.homeCollectionFee ?? doctor.pricing?.homeCollectionFee ?? 0;
   const showRating = Number(doctor.rating) > 0;
   const status = liveStatusOf(doctor);
   const badge = verificationBadge(doctor);
@@ -237,7 +242,16 @@ export function DoctorCard({ doctor, onPress, variant = 'grid' }: DoctorCardProp
         </View>
         <Text style={styles.price}>
           {/* Vendor khud daam set karta hai — na ho to "On request". */}
-          {fee > 0 ? (
+          {isLab ? (
+            collectionFee > 0 ? (
+              <>
+                ₹{collectionFee}
+                <Text style={[typography.caption, { color: colors.textMuted }]}> /pickup</Text>
+              </>
+            ) : (
+              <Text style={[typography.caption, { color: colors.textMuted }]}>Free home pickup</Text>
+            )
+          ) : fee > 0 ? (
             <>
               ₹{fee}
               <Text style={[typography.caption, { color: colors.textMuted }]}> /visit</Text>

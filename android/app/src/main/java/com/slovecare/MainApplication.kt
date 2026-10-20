@@ -16,6 +16,14 @@ class MainApplication : Application(), ReactApplication {
         PackageList(this).packages.apply {
           // Packages that cannot be autolinked yet can be added manually here, for example:
           // add(MyReactNativePackage())
+          //
+          // AppThemeModule — system bars ko app ke in-app theme ke saath sync
+          // karta hai (phone ke dark-mode se independent).
+          add(AppThemePackage())
+          //
+          // FileSaverModule — prescription PDF ko phone ke public Downloads
+          // folder me save karta hai.
+          add(FileSaverPackage())
         },
     )
   }

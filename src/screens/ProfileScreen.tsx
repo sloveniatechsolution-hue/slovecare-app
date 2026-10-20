@@ -15,7 +15,12 @@ import { Logo } from '../components/Logo';
 import { AppButton, Card, GradientCard, Screen, SectionHeader } from '../components/UI';
 import api, { UserDashboard } from '../api/api';
 import { useAuth } from '../context/AuthContext';
+import { usePrescriptionCredits } from '../context/PrescriptionCreditsContext';
 import { RootStackParamList } from '../navigation/types';
+import {
+  CREDIT_PACK_PRICE_RUPEES,
+  CREDIT_PACK_SIZE,
+} from '../utils/prescriptionCredits';
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
 import { useThemePreference } from '../theme/ThemeContext';
 
@@ -28,6 +33,7 @@ export default function ProfileScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const { user, logout, isLoggedIn, updateUser } = useAuth();
   const { dark, preference, setPreference } = useThemePreference();
+  const { remaining: rxReadsLeft } = usePrescriptionCredits();
 
   const [dashboard, setDashboard] = useState<UserDashboard | null>(null);
 
@@ -89,6 +95,15 @@ export default function ProfileScreen(): React.JSX.Element {
       label: 'Prescription Reader',
       sub: 'Scan a prescription photo with AI',
       onPress: () => navigation.navigate('PrescriptionReader'),
+    },
+    {
+      icon: 'zap',
+      label: 'Prescription Reads',
+      sub:
+        rxReadsLeft > 0
+          ? `${rxReadsLeft} read(s) left · top up ₹${CREDIT_PACK_PRICE_RUPEES} for ${CREDIT_PACK_SIZE}`
+          : `No reads left · ₹${CREDIT_PACK_PRICE_RUPEES} for ${CREDIT_PACK_SIZE} reads`,
+      onPress: () => navigation.navigate('PrescriptionReaderPlans'),
     },
     {
       icon: 'zap',

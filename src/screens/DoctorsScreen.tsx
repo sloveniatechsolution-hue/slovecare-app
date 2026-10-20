@@ -26,7 +26,7 @@ import { RootStackParamList, StaffType, TabParamList } from '../navigation/types
 
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
 
-import { useThemePreference } from '../theme/ThemeContext';
+import { useThemeKey, useThemePreference } from '../theme/ThemeContext';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type DoctorsRoute = RouteProp<TabParamList, 'Doctors'>;
@@ -114,6 +114,7 @@ function chipForType(type?: StaffType): string {
 
 export default function DoctorsScreen(): React.JSX.Element {
   useThemePreference();
+  const themeKey = useThemeKey();
   const navigation = useNavigation<Nav>();
   const route = useRoute<DoctorsRoute>();
   const insets = useSafeAreaInsets();
@@ -380,6 +381,7 @@ export default function DoctorsScreen(): React.JSX.Element {
       ) : (
         <FlatList
           data={listData}
+          extraData={themeKey}
           keyExtractor={item => item.id}
           ListHeaderComponent={header}
           renderItem={({ item }) => (

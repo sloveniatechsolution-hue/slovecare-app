@@ -43,11 +43,17 @@ export interface BookingDetailsInfo {
   patientName: string;
   amount: number;
   address?: string;
+  /** Booking par prescription hai? (tab modal me "View Prescription" button) */
+  hasPrescription?: boolean;
+  /** Prescription ka diagnosis — detail row me dikhata hai. */
+  prescriptionDiagnosis?: string;
 }
 
 export interface BookingDetailsCardProps {
   info: BookingDetailsInfo;
   onClose?: () => void;
+  /** Prescription hai to usse open karne ka callback. */
+  onViewPrescription?: () => void;
   /** Modal se aane wala entry animation (opacity + transform). */
   animatedStyle?: Animated.WithAnimatedValue<ViewStyle>;
 }
@@ -99,6 +105,7 @@ function DetailRow({ icon, label, value }: { icon: IconName; label: string; valu
 export function BookingDetailsCard({
   info,
   onClose,
+  onViewPrescription,
   animatedStyle,
 }: BookingDetailsCardProps): React.JSX.Element {
   useThemePreference();
@@ -118,6 +125,13 @@ export function BookingDetailsCard({
     list.push({ icon: 'user', label: 'Patient', value: info.patientName });
     if (info.address) {
       list.push({ icon: 'map-pin', label: 'Address', value: info.address });
+    }
+    if (info.hasPrescription) {
+      list.push({
+        icon: 'file-text',
+        label: 'Prescription',
+        value: info.prescriptionDiagnosis || 'Ready to view',
+      });
     }
     return list;
   }, [info]);
@@ -210,8 +224,16 @@ export function BookingDetailsCard({
 
       {/* ----------------------------- actions ----------------------------- */}
       <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
+        {onViewPrescription ? (
+          <AppButton
+            label="View Prescription"
+            icon="file-text"
+            size="lg"
+            onPress={onViewPrescription}
+          />
+        ) : null}
         {onClose ? (
-          <AppButton label="Done" icon="check" size="lg" onPress={onClose} />
+          <AppButton label="Done" icon="check" variant="outline" size="lg" onPress={onClose} />
         ) : null}
       </View>
     </Animated.View>
@@ -231,6 +253,7 @@ export default function BookingDetailsModal({
   visible,
   info,
   onClose,
+  onViewPrescription,
 }: BookingDetailsModalProps): React.JSX.Element | null {
   useThemePreference();
   const backdropAnim = useRef(new Animated.Value(0)).current;
@@ -264,6 +287,7 @@ export default function BookingDetailsModal({
         <BookingDetailsCard
           info={info}
           onClose={onClose}
+          onViewPrescription={onViewPrescription}
           animatedStyle={{
             opacity: cardAnim,
             transform: [

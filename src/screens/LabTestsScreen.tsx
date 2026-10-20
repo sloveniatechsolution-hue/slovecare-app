@@ -18,12 +18,13 @@ import { RootStackParamList } from '../navigation/types';
 
 import { colors, radius, spacing, typography } from '../theme/theme';
 
-import { useThemePreference } from '../theme/ThemeContext';
+import { useThemeKey, useThemePreference } from '../theme/ThemeContext';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function LabTestsScreen(): React.JSX.Element {
   useThemePreference();
+  const themeKey = useThemeKey();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
 
@@ -82,6 +83,7 @@ export default function LabTestsScreen(): React.JSX.Element {
       ) : (
         <FlatList
           data={labs}
+          extraData={themeKey}
           keyExtractor={item => item.id}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl * 2, gap: spacing.md }}
           showsVerticalScrollIndicator={false}
@@ -105,7 +107,10 @@ export default function LabTestsScreen(): React.JSX.Element {
                       {item.city ? (
                         <Text style={[typography.caption, { marginTop: 2 }]}>{item.city}</Text>
                       ) : null}
-                      {item.labDetails?.homeSampleCollectionAvailable ? (
+                      {/* Backend `homeCollectionAvailable` bhi bhejta hai — dono keys. */}
+                      {item.labDetails &&
+                      (item.labDetails.homeSampleCollectionAvailable ||
+                        item.labDetails.homeCollectionAvailable) ? (
                         <View style={{ marginTop: 6 }}>
                           <Badge label="Free home pickup" tone="success" icon="home" />
                         </View>

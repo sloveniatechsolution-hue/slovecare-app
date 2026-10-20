@@ -64,7 +64,7 @@ const MEAL_LABEL: Record<DietMeal['key'], string> = {
 };
 
 const DISCLAIMER_FALLBACK =
-  'This AI-generated plan provides general nutrition guidance only. It is not a medical diagnosis ' +
+  'This plan provides general nutrition guidance only. It is not a medical diagnosis ' +
   'or a substitute for advice from a doctor or registered dietitian. All calorie and nutrient ' +
   'values are rough estimates.';
 
@@ -335,7 +335,7 @@ export function buildDietPlanHtml(plan: DietPlan, completion: Record<string, boo
     <div class="brand-row">
       <div class="logo">S</div>
       <div>
-        <div class="brand-tag">AI Weekly Diet Planner</div>
+        <div class="brand-tag">Weekly Diet Planner</div>
         <div class="brand-name">SloveCare</div>
       </div>
     </div>

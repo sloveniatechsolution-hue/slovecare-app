@@ -20,7 +20,7 @@ import { RootStackParamList } from '../navigation/types';
 
 import { colors, radius, spacing, typography } from '../theme/theme';
 
-import { useThemePreference } from '../theme/ThemeContext';
+import { useThemeKey, useThemePreference } from '../theme/ThemeContext';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Filter = 'upcoming' | 'completed' | 'all';
@@ -108,6 +108,7 @@ function bookingCaption(item: Booking): string {
 
 export default function AppointmentsScreen({ navigation }: { navigation: Nav }): React.JSX.Element {
   useThemePreference();
+  const themeKey = useThemeKey();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
@@ -308,6 +309,7 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
       ) : (
         <FlatList
           data={filtered}
+          extraData={themeKey}
           keyExtractor={item => item.id}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.xxxl, gap: spacing.md }}
           showsVerticalScrollIndicator={false}
@@ -377,18 +379,30 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
                 </View>
 
                 {item.prescription ? (
-                  <View style={styles.rxBox}>
+                  <Pressable
+                    onPress={() =>
+                      navigation.navigate('PrescriptionDetail', {
+                        bookingId: item.id,
+                        prescription: item.prescription,
+                        doctorName: item.doctorName || item.vendorName,
+                        serviceName: item.serviceName,
+                      })
+                    }
+                    style={({ pressed }) => [styles.rxBox, pressed && { opacity: 0.85 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open prescription: ${item.prescription.diagnosis ?? 'prescription'}`}
+                  >
                     <Icon name="file-text" size={15} color={colors.primary} />
                     <View style={{ flex: 1 }}>
                       <Text style={[typography.smallMedium, { color: colors.primary }]}>
-                        Prescription ready — {item.prescription.diagnosis}
+                        Prescription ready — {item.prescription.diagnosis ?? 'Prescription'}
                       </Text>
                       <Text style={typography.caption}>
                         {item.prescription.medicines?.length ?? 0} medicine(s) • {item.prescription.date}
                       </Text>
                     </View>
                     <Icon name="chevron-right" size={16} color={colors.primary} />
-                  </View>
+                  </Pressable>
                 ) : null}
 
                 <View style={styles.actions}>
@@ -496,10 +510,26 @@ export default function AppointmentsScreen({ navigation }: { navigation: Nav }):
                 patientName: detailsBooking.patientName,
                 amount: detailsBooking.amount,
                 address: detailsBooking.customer?.address,
+                hasPrescription: Boolean(detailsBooking.prescription),
+                prescriptionDiagnosis: detailsBooking.prescription?.diagnosis,
               }
             : null
         }
         onClose={() => setDetailsBooking(null)}
+        onViewPrescription={
+          detailsBooking?.prescription
+            ? () => {
+                const booking = detailsBooking;
+                setDetailsBooking(null);
+                navigation.navigate('PrescriptionDetail', {
+                  bookingId: booking.id,
+                  prescription: booking.prescription,
+                  doctorName: booking.doctorName || booking.vendorName,
+                  serviceName: booking.serviceName,
+                });
+              }
+            : undefined
+        }
       />
     </Screen>
   );

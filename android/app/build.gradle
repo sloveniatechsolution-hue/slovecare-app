@@ -65,13 +65,27 @@ def enableProguardInReleaseBuilds = false
 /**
  * Release signing — android/keystore.properties (gitignored) se credentials aate hain.
  * File na mile to release build debug keystore se sign hota hai (sirf testing ke liye).
+ *
+ * ⚠️ Pehle sirf `keystore.properties` ki existence check hoti thi. Usse yeh hota
+ * tha ki properties file hone par bhi agar usme likha `.jks` missing ho (fresh
+ * clone / dusre machine / key na mile), poora release build
+ * "Keystore file not found" par FAIL ho jaata tha — aur build.gradle ke
+ * comment ke mutabiq debug-keystore fallback kabhi trigger nahi hota tha.
+ * Isi wajah se kuch machines par purana/stale APK test hota raha.
+ *
+ * Ab fallback tab bhi chalta hai jab properties file ho par uska `.jks`
+ * maujood na ho.
  */
 def keystorePropertiesFile = rootProject.file('keystore.properties')
 def keystoreProperties = new Properties()
 if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
 }
-def hasReleaseKeystore = keystorePropertiesFile.exists()
+def releaseStoreFile = keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+def hasReleaseKeystore = releaseStoreFile != null && releaseStoreFile.exists()
+if (keystorePropertiesFile.exists() && !hasReleaseKeystore) {
+    logger.lifecycle("[slovecare] Release keystore nahi mila (${releaseStoreFile}) — debug keystore se sign hoga.")
+}
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -126,7 +140,7 @@ android {
         }
         if (hasReleaseKeystore) {
             release {
-                storeFile file(keystoreProperties['storeFile'])
+                storeFile releaseStoreFile
                 storePassword keystoreProperties['storePassword']
                 keyAlias keystoreProperties['keyAlias']
                 keyPassword keystoreProperties['keyPassword']

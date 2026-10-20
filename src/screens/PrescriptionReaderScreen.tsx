@@ -34,6 +34,8 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AppHeader from '../components/AppHeader';
 import Icon from '../components/Icon';
+import PrescriptionCreditsCard from '../components/PrescriptionCreditsCard';
+import PrescriptionPaywallModal from '../components/PrescriptionPaywallModal';
 import {
   AppButton,
   Badge,
@@ -47,7 +49,10 @@ import api, {
   PrescriptionAnalysisResult,
   PrescriptionMedicine,
   PrescriptionOcrResult,
+  PrescriptionQuota,
 } from '../api/api';
+import { useAuth } from '../context/AuthContext';
+import { usePrescriptionCredits } from '../context/PrescriptionCreditsContext';
 import { RootStackParamList } from '../navigation/types';
 
 import { colors, radius, spacing, typography } from '../theme/theme';
@@ -169,6 +174,8 @@ const confidenceTone = (confidence: MedicineConfidence): 'success' | 'warning' |
 export default function PrescriptionReaderScreen({ navigation }: Props): React.JSX.Element {
   useThemePreference();
   const insets = useSafeAreaInsets();
+  const { user, isLoggedIn } = useAuth();
+  const { canAnalyze, consumeRead, applyServerQuota } = usePrescriptionCredits();
 
   const [image, setImage] = useState<SelectedImage | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
@@ -177,6 +184,7 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
   const [error, setError] = useState<string | null>(null);
   const [showExtracted, setShowExtracted] = useState(false);
   const [expandedMedicine, setExpandedMedicine] = useState<number | null>(null);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   const busy = phase === 'ocr' || phase === 'ai' || phase === 'summary';
 
@@ -232,6 +240,11 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
     if (!image || busy) {
       return;
     }
+    // Credits khatam ho gaye → paywall (₹19 → 10 reads).
+    if (!canAnalyze) {
+      setShowPaywall(true);
+      return;
+    }
     setError(null);
     setResult(null);
     setOcrResult(null);
@@ -253,11 +266,19 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
       const prepared = prepareSummary(analysisResult);
       setResult(prepared);
       setPhase('done');
+      // Credit consume: server quota payload aata hai to server hi kaata hai
+      // (device sirf sync karta hai); warna device ledger par consume.
+      const serverQuota = (analysisResult as { quota?: PrescriptionQuota } | null)?.quota;
+      if (serverQuota && typeof serverQuota.freeRemaining === 'number' && typeof serverQuota.paidRemaining === 'number') {
+        applyServerQuota(serverQuota);
+      } else {
+        consumeRead();
+      }
     } catch (e) {
       setError((e as Error).message || 'Something went wrong while reading the prescription. Please try again.');
       setPhase('error');
     }
-  }, [image, busy]);
+  }, [image, busy, canAnalyze, consumeRead, applyServerQuota]);
 
   const resetAll = () => {
     if (busy) {
@@ -282,7 +303,7 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
       <AppHeader
         title="Prescription Reader"
         subtitle="Prescription → AI analysis"
-        onBack={() => navigation.goBack()}
+        onBack={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Main')}
         rightIcon={image ? 'refresh' : undefined}
         onRightPress={image ? resetAll : undefined}
       />
@@ -297,6 +318,10 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* --------------------------- Credit balance ------------------------ */}
+        {/* 3 free reads → phir ₹19 me 10 reads. Balance live update hota hai. */}
+        <PrescriptionCreditsCard onUpgrade={() => setShowPaywall(true)} />
+
         {/* ---------------------------- Image source ------------------------- */}
         <Card>
           <SectionHeader
@@ -343,11 +368,12 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
           </View>
 
           <AppButton
-            label="Analyze Prescription"
-            icon="sparkles"
+            label={canAnalyze ? 'Analyze Prescription' : 'Get Reads to Continue'}
+            icon={canAnalyze ? 'sparkles' : 'credit-card'}
             variant="accent"
             size="lg"
-            disabled={!image}
+            /* Credits khatam → button hamesha active (paywall kholta hai). */
+            disabled={!image && canAnalyze}
             loading={busy}
             onPress={analyze}
             style={{ marginTop: spacing.md }}
@@ -646,6 +672,14 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
           </View>
         ) : null}
       </ScrollView>
+
+      {/* --------------------- Paywall (credits khatam) ---------------------- */}
+      <PrescriptionPaywallModal
+        visible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        onRequireLogin={isLoggedIn ? undefined : () => navigation.navigate('Auth')}
+        onViewPlans={() => navigation.navigate('PrescriptionReaderPlans')}
+      />
     </Screen>
   );
 }

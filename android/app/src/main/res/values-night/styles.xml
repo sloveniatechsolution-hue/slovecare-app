@@ -1,10 +1,27 @@
 <resources>
 
-    <!-- Base application theme for Dark / Night mode. -->
+    <!--
+        Base application theme for Dark / Night mode.
+
+        System bars transparent rehte hain (edge-to-edge) aur unka contrast
+        scrim band hata diya gaya hai — is liye phone dark ho ya light, app
+        ke andar ka content hi dikhta hai, koi alag black/grey strip nahi.
+
+        `windowBackground` night me dark rakha hai taaki dark-mode users ko
+        startup par white flash na mile.
+    -->
     <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
         <item name="android:windowBackground">#070C14</item>
         <item name="android:forceDarkAllowed">false</item>
+
+        <!-- Edge-to-edge: system bars transparent, app ke content ke upar. -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <!-- API 29+ ka default translucent scrim hatata hai. -->
+        <item name="android:enforceNavigationBarContrast">false</item>
     </style>
 
 </resources>

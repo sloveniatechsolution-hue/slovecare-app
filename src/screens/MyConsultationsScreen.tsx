@@ -7,12 +7,13 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppHeader from '../components/AppHeader';
 import Icon, { IconName } from '../components/Icon';
 import ReviewSheet from '../components/ReviewSheet';
+import BookingDetailsModal from '../components/BookingDetailsModal';
 import { AppButton, Badge, Card, EmptyState, ErrorState, Loader, Screen } from '../components/UI';
 import api, { Booking, bookingTime } from '../api/api';
 import { consultationModeOf, ConsultationMode } from '../consultation/types';
@@ -20,7 +21,7 @@ import { RootStackParamList } from '../navigation/types';
 
 import { colors, radius, spacing, typography } from '../theme/theme';
 
-import { useThemePreference } from '../theme/ThemeContext';
+import { useThemeKey, useThemePreference } from '../theme/ThemeContext';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -43,6 +44,7 @@ const MODE_ICON: Record<ConsultationMode, IconName> = { video: 'video', chat: 'm
 
 export default function MyConsultationsScreen({ navigation }: { navigation: Nav }): React.JSX.Element {
   useThemePreference();
+  const themeKey = useThemeKey();
   const insets = useSafeAreaInsets();
 
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -57,6 +59,8 @@ export default function MyConsultationsScreen({ navigation }: { navigation: Nav 
     vendorName: string;
     bookingId: string;
   } | null>(null);
+  /** Jis consultation ka details modal khula hai. */
+  const [detailsBooking, setDetailsBooking] = useState<Booking | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -127,6 +131,7 @@ export default function MyConsultationsScreen({ navigation }: { navigation: Nav 
       ) : (
         <FlatList
           data={bookings}
+          extraData={themeKey}
           keyExtractor={item => item.id}
           contentContainerStyle={[styles.list, { paddingBottom: spacing.xxxl * 2 + insets.bottom }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
@@ -173,6 +178,34 @@ export default function MyConsultationsScreen({ navigation }: { navigation: Nav 
                     <Text style={typography.caption}>₹{item.amount}</Text>
                   </View>
                 </View>
+
+                {/* Doctor ka bana hua prescription — tap karo, poora PDF milega. */}
+                {item.prescription ? (
+                  <Pressable
+                    onPress={() =>
+                      navigation.navigate('PrescriptionDetail', {
+                        bookingId: item.id,
+                        prescription: item.prescription,
+                        doctorName: item.doctorName || item.vendorName,
+                        serviceName: item.serviceName,
+                      })
+                    }
+                    style={({ pressed }) => [styles.rxBox, pressed && { opacity: 0.85 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open prescription: ${item.prescription.diagnosis ?? 'prescription'}`}
+                  >
+                    <Icon name="file-text" size={15} color={colors.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[typography.smallMedium, { color: colors.primary }]}>
+                        Prescription ready — {item.prescription.diagnosis ?? 'Prescription'}
+                      </Text>
+                      <Text style={typography.caption}>
+                        {item.prescription.medicines?.length ?? 0} medicine(s) • {item.prescription.date}
+                      </Text>
+                    </View>
+                    <Icon name="chevron-right" size={16} color={colors.primary} />
+                  </Pressable>
+                ) : null}
 
                 <View style={styles.actions}>
                   {joinable && mode === 'video' ? (
@@ -235,13 +268,7 @@ export default function MyConsultationsScreen({ navigation }: { navigation: Nav 
                     size="sm"
                     full={false}
                     style={{ flex: 1 }}
-                    onPress={() =>
-                      // eslint-disable-next-line @typescript-eslint/no-var-requires
-                      require('react-native').Alert.alert(
-                        mode === 'video' ? 'Video Consultation' : 'Chat Consultation',
-                        `Booking: ${item.id}\nDoctor: ${item.doctorName || item.vendorName}\nStatus: ${item.status}\nDate: ${item.date} • ${bookingTime(item)}\nDuration: ${item.durationMinutes ?? '—'} min\nAmount: ₹${item.amount}`,
-                      )
-                    }
+                    onPress={() => setDetailsBooking(item)}
                   />
                 </View>
               </Card>
@@ -262,6 +289,50 @@ export default function MyConsultationsScreen({ navigation }: { navigation: Nav 
           loadMyReviews();
         }}
       />
+
+      {/* Consultation details — premium modal (prescription + booking info). */}
+      <BookingDetailsModal
+        visible={Boolean(detailsBooking)}
+        info={
+          detailsBooking
+            ? {
+                serviceName:
+                  consultationModeOf(detailsBooking.serviceType) === 'chat'
+                    ? 'Chat Consultation'
+                    : 'Video Consultation',
+                providerName: detailsBooking.doctorName || detailsBooking.vendorName,
+                serviceIcon: 'stethoscope',
+                serviceTypeLabel: detailsBooking.serviceType.replace(/_/g, ' '),
+                bookingId: detailsBooking.id,
+                status: detailsBooking.status,
+                isDelayed: detailsBooking.isDelayed,
+                delayMinutes: detailsBooking.delayMinutes,
+                date: detailsBooking.date,
+                time: bookingTime(detailsBooking),
+                patientName: detailsBooking.patientName,
+                amount: detailsBooking.amount,
+                address: detailsBooking.customer?.address,
+                hasPrescription: Boolean(detailsBooking.prescription),
+                prescriptionDiagnosis: detailsBooking.prescription?.diagnosis,
+              }
+            : null
+        }
+        onClose={() => setDetailsBooking(null)}
+        onViewPrescription={
+          detailsBooking?.prescription
+            ? () => {
+                const booking = detailsBooking;
+                setDetailsBooking(null);
+                navigation.navigate('PrescriptionDetail', {
+                  bookingId: booking.id,
+                  prescription: booking.prescription,
+                  doctorName: booking.doctorName || booking.vendorName,
+                  serviceName: booking.serviceName,
+                });
+              }
+            : undefined
+        }
+      />
     </Screen>
   );
 }
@@ -279,5 +350,13 @@ const styles = StyleSheet.create({
   },
   metaRow: { flexDirection: 'row', gap: spacing.lg, flexWrap: 'wrap' },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  rxBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+  },
   actions: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
 });

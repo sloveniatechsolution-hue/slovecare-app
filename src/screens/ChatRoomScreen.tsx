@@ -28,7 +28,7 @@ import { RootStackParamList } from '../navigation/types';
 
 import { colors, radius, spacing, typography } from '../theme/theme';
 
-import { useThemePreference } from '../theme/ThemeContext';
+import { useThemeKey, useThemePreference } from '../theme/ThemeContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ChatRoom'>;
 
@@ -59,6 +59,7 @@ function timeLabel(iso?: string): string {
 
 export default function ChatRoomScreen({ navigation, route }: Props): React.JSX.Element {
   useThemePreference();
+  const themeKey = useThemeKey();
   const { bookingId, peerName } = route.params;
   const insets = useSafeAreaInsets();
 
@@ -224,6 +225,7 @@ export default function ChatRoomScreen({ navigation, route }: Props): React.JSX.
           <FlatList
             ref={listRef}
             data={messages}
+          extraData={themeKey}
             keyExtractor={item => item.id}
             contentContainerStyle={styles.list}
             onScrollBeginDrag={loadOlder}

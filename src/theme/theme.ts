@@ -14,6 +14,23 @@
  *    (dynamic styles), is liye poori app bina remount ke theme follow karti hai
  *  - `gradients`, `shadow`, `typography` ke colours bhi getters hain
  *  - ThemeContext user ka choice (system/light/dark) AsyncStorage me rakhta hai
+ *
+ * ── Colour mapping kaise kaam karta hai (root-cause note) ────────────────────
+ * `StyleSheet.create` module-load par colour value *capture* karta hai (object
+ * literal evaluate hota hai). Captured hex se yeh pata nahi chalta ki value
+ * `colors.card` thi ya `colors.text` — sirf ek string milti hai. Is liye
+ * mapping ko SEMANTIC TOKEN tak wapas le jaana zaroori hai:
+ *
+ *   `TOKENS_BY_VALUE` (value → candidate tokens) + role sets (surface / ink /
+ *   border / shadow) se captured value ka token mil jaata hai, aur token ka
+ *   current-palette value EXACTLY resolve hota hai. Light → dark → light
+ *   round-trip is liye lossless hai.
+ *
+ * ⚠️ Isko "luminance se guess" se replace mat karna. Pehle yahi heuristic
+ * Light Mode me halki text ko BLACK ink (`LIGHT.text`) bana deti thi — isi
+ * wajah se Dark → Light switch ke baad kuch elements black/dark reh jaate
+ * the (jaise HeroSection ka `#C9F5F1` eyebrow). Ab unknown values apni
+ * authored value hi rehti hain — naya colour kabhi invent nahi hota.
  */
 
 import { Platform, StyleSheet, TextStyle, ViewStyle } from 'react-native';
@@ -194,36 +211,173 @@ export const colors = new Proxy(LIGHT, {
   get(target, key: keyof typeof LIGHT) { return (themeIsDark ? DARK : target)[key]; },
 }) as typeof LIGHT;
 
-/* ------------------------------------------------- light → dark hue mapping */
+/* -------------------------------------------------------------------------- */
+/*  Token registry                                                             */
+/* -------------------------------------------------------------------------- */
 
-/** Har light hex ka exact dark counterpart — palette se automatically banta hai. */
-const DARK_BY_LIGHT: Record<string, string> = {};
-/** Har dark hex ka exact light counterpart — palette se automatically banta hai. */
-const LIGHT_BY_DARK: Record<string, string> = {};
+/**
+ * Palette ka LOSSLESS mapping — captured colour value se wapas semantic token
+ * tak pahunchne ka tareeka.
+ *
+ * Kyun zaroori hai:
+ * `StyleSheet.create` module-load par colour value *capture* kar leta hai
+ * (object literal evaluate hota hai). Uske baad `themedStyleColor()` ko
+ * pata nahi chalta ki captured value `colors.card` thi ya `colors.text` —
+ * sirf ek hex string milti hai. Pehle yahi ambiguity "guessing" se hal ki
+ * jaati thi (luminance heuristics), aur wahi heuristics Light Mode me
+ * GALAT colour bana dete the (jaise light text -> BLACK ink).
+ *
+ * Registry dono palettes ke values register karti hai, isliye
+ * `light -> dark -> light` round-trip EXACT rehta hai — koi heuristic nahi.
+ */
+type TokenName = keyof typeof LIGHT;
 
-for (const key of Object.keys(LIGHT) as (keyof typeof LIGHT)[]) {
-  /* Wash / on-dark / transparent tokens sirf gradients ke through use hote hain —
-     inhe remap table me daalne se shared hex (jaise white) ki value galat ban jaati hai. */
-  if (['transparent', 'washTop', 'washMid', 'washBottom', 'onDarkMuted', 'onDarkChip', 'onDarkBorder'].includes(key)) continue;
-  const lightHex = String(LIGHT[key]).toUpperCase();
-  const darkHex = String(DARK[key]).toUpperCase();
-  if (!(lightHex in DARK_BY_LIGHT)) DARK_BY_LIGHT[lightHex] = DARK[key];
-  if (!(darkHex in LIGHT_BY_DARK)) LIGHT_BY_DARK[darkHex] = LIGHT[key];
+/** captured value → us value ko de sakte hain candidate tokens. */
+const TOKENS_BY_VALUE = new Map<string, TokenName[]>();
+
+function registerToken(value: string, token: TokenName): void {
+  const list = TOKENS_BY_VALUE.get(value);
+  if (list) {
+    if (!list.includes(token)) list.push(token);
+  } else {
+    TOKENS_BY_VALUE.set(value, [token]);
+  }
+}
+
+for (const key of Object.keys(LIGHT) as TokenName[]) {
+  registerToken(String(LIGHT[key]), key);
+  registerToken(String(DARK[key]), key);
 }
 
 /**
- * White light mode me card (surface) aur text/icon dono ke liye hai — dark mode me
- * uska matlab property se decide hota hai (background = ink card, text = white).
+ * Role-wise token groups — style property se decide hota hai ki captured
+ * value ka matlab kya hai. Jaise '#FFFFFF' card surface bhi hai aur text bhi;
+ * `backgroundColor` par surface, `color` par text.
  */
-const WHITE_BY_PROPERTY: Record<string, string> = {
-  backgroundColor: DARK.card,
-  borderColor: DARK.border,
-  borderTopColor: DARK.border,
-  borderBottomColor: DARK.border,
-  borderLeftColor: DARK.border,
-  borderRightColor: DARK.border,
-  shadowColor: DARK.shadowColor,
-};
+const SURFACE_TOKENS = new Set<TokenName>([
+  'background',
+  'card',
+  'cardMuted',
+  'primaryLight',
+  'accentLight',
+  'dangerLight',
+  'warningLight',
+  'successLight',
+  'violetSoft',
+  'infoLight',
+  'skeleton',
+  'ctaBg',
+]);
+
+const INK_TOKENS = new Set<TokenName>([
+  'text',
+  'textSecondary',
+  'textMuted',
+  'textInverse',
+  'navy',
+  'navyDeep',
+  'navySoft',
+  'brandBlue',
+  'brandGreen',
+  'violet',
+  'violetInk',
+  'warningText',
+  'blue',
+  'blueDark',
+  'primary',
+  'primaryDark',
+  'accent',
+  'danger',
+  'warning',
+  'success',
+  'star',
+]);
+
+const BORDER_TOKENS = new Set<TokenName>(['border', 'borderStrong']);
+const SHADOW_TOKENS = new Set<TokenName>(['shadowColor']);
+
+const BORDER_PROPERTIES = new Set<string>([
+  'borderColor',
+  'borderTopColor',
+  'borderBottomColor',
+  'borderLeftColor',
+  'borderRightColor',
+]);
+
+function roleTokensFor(property: string): Set<TokenName> | undefined {
+  switch (property) {
+    case 'backgroundColor':
+      return SURFACE_TOKENS;
+    case 'color':
+    case 'tintColor':
+      return INK_TOKENS;
+    case 'shadowColor':
+      return SHADOW_TOKENS;
+    default:
+      return BORDER_PROPERTIES.has(property) ? BORDER_TOKENS : undefined;
+  }
+}
+
+/**
+ * Captured value + style property → palette token.
+ * Role match pehle, warna koi bhi token jo dono palettes me defined ho.
+ */
+function tokenFor(value: string, property: string): TokenName | undefined {
+  const candidates = TOKENS_BY_VALUE.get(value);
+  if (!candidates || candidates.length === 0) return undefined;
+
+  const role = roleTokensFor(property);
+  if (role) {
+    for (const token of candidates) {
+      if (role.has(token)) return token;
+    }
+  }
+
+  const lightValues = LIGHT as unknown as Record<string, string | undefined>;
+  const darkValues = DARK as unknown as Record<string, string | undefined>;
+  for (const token of candidates) {
+    if (lightValues[token] !== undefined && darkValues[token] !== undefined) return token;
+  }
+  return undefined;
+}
+
+/**
+ * Deliberately fixed colours — inhe kabhi remap NAHI karna.
+ * (Video-call ka hamesha-dark surface, brand logos, splash blobs.)
+ *
+ * Design intentional hai — inhe theme ke saath badalna bug hai, feature nahi.
+ */
+const FIXED_COLORS = new Set<string>([
+  /* Video call screen — hamesha dark (call UI convention) */
+  '#0B1220',
+  '#091522',
+  '#131C2E',
+  '#0A1A2E',
+  '#0D1826',
+  '#16263B',
+  'RGBA(11,18,32,0.55)',
+  'RGBA(11,18,32,0.92)',
+  'RGBA(11,18,32,0.75)',
+  /* Hero scrim ke upar mint text — hamesha light */
+  '#C9F5F1',
+  '#7FE9E1',
+  /* Splash ke legacy blobs */
+  '#198AEA',
+  '#0CB6B6',
+  /* Google brand colours */
+  '#4285F4',
+  '#34A853',
+  '#FBBC05',
+  '#EA4335',
+]);
+
+/* ------------------------------------------------- light → dark hue mapping */
+
+/*
+ * NOTE: Light ↔ dark hex tables ki zaroorat ab nahi — `TOKENS_BY_VALUE`
+ * (upar) semantic token ko value se wapas resolve karta hai, isliye mapping
+ * exact hai aur hand-maintained lookup tables nahi rakhne padte.
+ */
 
 /**
  * Solid brand shades (badge / button / tab-pill backgrounds) un light values par
@@ -256,6 +410,7 @@ const EXTRA_DARK: Record<string, string> = {
   /* blue info chips / icon touches */
   '#E8F0FE': DARK.infoLight,
   '#EAF1FE': DARK.infoLight,
+  '#EAF1FF': DARK.infoLight,
   '#F3F7FF': DARK.infoLight,
   '#EEF3FB': DARK.infoLight,
   '#D8E4FF': DARK.borderStrong,
@@ -273,11 +428,9 @@ const EXTRA_DARK: Record<string, string> = {
   /* icon default stroke (Icon.tsx) */
   '#0F1E33': DARK.text,
   /* purani dark palette ki values → nayi ink palette */
-  '#0B1220': DARK.background,
   '#111B2E': DARK.card,
   '#26364E': DARK.border,
   '#E5EDF8': DARK.text,
-  '#091522': DARK.background,
   '#111F30': DARK.card,
   '#17283B': DARK.cardMuted,
   '#26384D': DARK.border,
@@ -287,10 +440,11 @@ const EXTRA_DARK: Record<string, string> = {
   '#8494AA': DARK.textMuted,
 };
 
-// Purane/extra dark tokens ko reverse table me bhi daal dete hain light mode ke liye
+/*
+ * Reverse table — jo values DARK palette me aayein, unka light-mode counterpart.
+ * Ye `EXTRA_DARK` ka exact mirror hai, isliye round-trip lossless rehta hai.
+ */
 const EXTRA_LIGHT: Record<string, string> = {
-  '#0B1220': LIGHT.background,
-  '#091522': LIGHT.background,
   '#111B2E': LIGHT.card,
   '#111F30': LIGHT.card,
   '#17283B': LIGHT.cardMuted,
@@ -302,9 +456,6 @@ const EXTRA_LIGHT: Record<string, string> = {
   '#2A1A1E': '#FFF8F8',
   '#2C1620': '#FFF5F7',
 };
-for (const [darkHex, lightHex] of Object.entries(EXTRA_LIGHT)) {
-  LIGHT_BY_DARK[darkHex.toUpperCase()] = lightHex;
-}
 
 /**
  * Text-token swap (mode ke hisaab se). Agar kisi screen ka text token galat
@@ -343,119 +494,109 @@ const LIGHT_TEXT_SWAPS: Record<string, string> = {
 };
 
 /**
- * Bidirectional style color mapping:
- * - Module chahe light mode me load hua ho ya dark mode me, current themeIsDark
- *   ke hisaab se sahi palette value milti hai.
- * - Light mode me dark card `#0F1725` kabhi black nahi rehta → white `#FFFFFF` banta hai.
- * - Dark mode me light card `#FFFFFF` kabhi white nahi rehta → ink `#0F1725` banta hai.
+ * Style colour ka EXACT, lossless mapping.
+ *
+ * Pehle yahan "guessing" hoti thi — captured hex ko luminance dekh kar
+ * doosre mode ka colour banaya jaata tha. Wahi guessing Light Mode me
+ * BLACK ink bana deti thi (light text -> `LIGHT.text`) aur unknown dark
+ * surfaces ko dark hi chhod deti thi. Isi wajah se Dark -> Light switch
+ * ke baad kuch elements black/dark reh jaate the.
+ *
+ * Ab resolution order:
+ *   1. `FIXED_COLORS`            — design intentional, kabhi nahi badalta
+ *   2. property-specific rules   — brand surfaces, navy-as-text, legacy swaps
+ *   3. TOKEN REGISTRY            — palette ka exact round-trip (no guessing)
+ *   4. rgba sheet rules          — white sheet <-> ink sheet
+ *   5. curated literal tables   — screens ke hard-coded hexes
+ *   6. conservative fallback     — value waisa hi rehta hai (naya colour
+ *                                  kabhi invent nahi hota)
  */
 function themedStyleColor(value: unknown, property: string): unknown {
   if (typeof value !== 'string') return value;
 
   const upper = value.toUpperCase();
+  const isText = property === 'color' || property === 'tintColor';
+  const isBorder = BORDER_PROPERTIES.has(property);
 
-  /* Wrong-mode text token → us mode ka readable text. */
-  if (property === 'color') {
+  /* 1. Deliberately fixed colours (video-call surface, brand logos …). */
+  if (FIXED_COLORS.has(upper)) return value;
+
+  /* 2. Property-specific rules jo design par depend karti hain. */
+  if (isText) {
+    /* Purane (palette se bahar) dim text tokens → is mode ka readable text. */
     const swapped = (themeIsDark ? DARK_TEXT_SWAPS : LIGHT_TEXT_SWAPS)[upper];
     if (swapped) return swapped;
+
+    /* Navy text slot me dark mode me bright ink chahiye. */
+    if (themeIsDark) {
+      const navy = NAVY_AS_TEXT[upper];
+      if (navy) return navy;
+    }
   }
 
-  /* -------------------------------------------------------------------------
-   * LIGHT MODE (Phone ya app jab light mode me ho)
-   * ------------------------------------------------------------------------- */
-  if (!themeIsDark) {
-    /* Shadow: dark mode black shadow se light mode navy shadow */
-    if (property === 'shadowColor') {
-      if (upper === '#000000' || upper === '#000') return LIGHT.shadowColor;
-      return value;
-    }
-
-    /* Ink sheets/translucent overlay → light mode equivalents */
-    const inkSheet = value.match(/^rgba\(\s*12\s*,\s*19\s*,\s*30\s*,\s*([0-9.]+)\s*\)$/i);
-    if (inkSheet) {
-      return property === 'backgroundColor' ? `rgba(255, 255, 255, ${inkSheet[1]})` : value;
-    }
-    if (value === DARK.cardOverlay) return LIGHT.cardOverlay;
-    if (value === DARK.overlay) return LIGHT.overlay;
-
-    if (!value.startsWith('#')) return value;
-
-    /* Dark card / surfaces captured in dark mode → LIGHT mode surface */
-    if (property === 'backgroundColor') {
-      if (upper === DARK.card.toUpperCase() || upper === '#111B2E' || upper === '#111F30') {
-        return LIGHT.card;
-      }
-      if (upper === DARK.cardMuted.toUpperCase() || upper === '#17283B') {
-        return LIGHT.cardMuted;
-      }
-      if (upper === DARK.background.toUpperCase() || upper === '#0B1220' || upper === '#091522') {
-        return LIGHT.background;
-      }
-    }
-
-    /* Dark borders captured in dark mode → LIGHT mode border */
-    if (
-      property === 'borderColor' ||
-      property === 'borderTopColor' ||
-      property === 'borderBottomColor' ||
-      property === 'borderLeftColor' ||
-      property === 'borderRightColor'
-    ) {
-      if (upper === DARK.border.toUpperCase() || upper === '#26364E' || upper === '#26384D') {
-        return LIGHT.border;
-      }
-      if (upper === DARK.borderStrong.toUpperCase() || upper === '#354A61') {
-        return LIGHT.borderStrong;
-      }
-    }
-
-    /* Direct dark hex lookup in reverse palette table */
-    const lightMapped = LIGHT_BY_DARK[upper];
-    if (lightMapped !== undefined) return lightMapped;
-
-    /* Fallback for any unknown dark surface so it doesn't turn cards pitch black in light mode */
-    return fallbackLight(value, property);
+  /*
+   * Brand surface (badge / button / tab-pill) apna colour DARK mode me bhi
+   * rehti hai — sirf uspar ka text/icon bright hota hai. Light mode me
+   * palette ka token hi sahi value deta hai, is liye ye rule sirf dark mode
+   * me lagta hai.
+   */
+  if (themeIsDark) {
+    const surface = SURFACE_SAFE[upper];
+    if (surface) return isText ? surface.fg : surface.bg;
   }
 
-  /* -------------------------------------------------------------------------
-   * DARK MODE (Phone ya app jab dark mode me ho)
-   * ------------------------------------------------------------------------- */
-  /* Palette ke rgba tokens (overlay / translucent card) */
-  const paletteMapped = DARK_BY_LIGHT[upper];
-  if (!value.startsWith('#') && paletteMapped !== undefined) return paletteMapped;
-
-  /* White sheets (near-opaque) dark me ink sheets ban jaate hain. */
-  const white = value.match(/^rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*([0-9.]+)\s*\)$/i);
-  if (white) {
-    return property === 'backgroundColor' && Number(white[1]) >= 0.9 ? `rgba(12, 19, 30, ${white[1]})` : value;
+  /* Shadow: design me dark mode me black, light mode me navy. */
+  if (property === 'shadowColor') {
+    if (themeIsDark) return DARK.shadowColor;
+    if (upper === '#000000' || upper === '#000') return LIGHT.shadowColor;
   }
-  if (!value.startsWith('#')) return value;
 
-  /* Pure white — property ke hisaab se (card surface = ink card, border = ink border). */
-  if (upper === '#FFFFFF' || upper === '#FFF') {
-    const surfaceValue = WHITE_BY_PROPERTY[property];
-    return surfaceValue ?? '#FFFFFF';
+  /* White border: light mode me white, dark mode me ink border. */
+  if (isBorder && (upper === '#FFFFFF' || upper === '#FFF')) {
+    return themeIsDark ? DARK.border : value;
   }
-  /* Shadow light mode waale navy shadow se black shadow ban jaata hai. */
-  if (property === 'shadowColor') return DARK.shadowColor;
 
-  const surface = SURFACE_SAFE[upper];
-  if (surface) return property === 'backgroundColor' ? surface.bg : surface.fg;
+  /* 3. TOKEN REGISTRY — palette ka exact, lossless round-trip. */
+  const token = tokenFor(value, property);
+  if (token) return themeIsDark ? DARK[token] : LIGHT[token];
 
-  const navy = NAVY_AS_TEXT[upper];
-  if (navy && property === 'color') return navy;
+  /* 4. rgba sheets — white sheet <-> ink sheet (sirf opposite mode me badalta hai). */
+  if (!value.startsWith('#')) {
+    if (themeIsDark) {
+      /* White sheet (near-opaque) dark me ink sheet ban jaata hai. */
+      const whiteSheet = value.match(/^rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*([0-9.]+)\s*\)$/i);
+      if (whiteSheet) {
+        return property === 'backgroundColor' && Number(whiteSheet[1]) >= 0.9
+          ? `rgba(12, 19, 30, ${whiteSheet[1]})`
+          : value;
+      }
+    } else {
+      /* Ink sheet light mode me white sheet ban jaata hai. */
+      const inkSheet = value.match(/^rgba\(\s*12\s*,\s*19\s*,\s*30\s*,\s*([0-9.]+)\s*\)$/i);
+      if (inkSheet) {
+        return property === 'backgroundColor' ? `rgba(255, 255, 255, ${inkSheet[1]})` : value;
+      }
+    }
 
-  const extra = EXTRA_DARK[upper];
+    /* Baaki translucent values (overlay scrims, white-on-dark chips) — as-is. */
+    return value;
+  }
+
+  /* 5. Curated tables — screens ke hard-coded hexes. */
+  const extra = themeIsDark ? EXTRA_DARK[upper] : EXTRA_LIGHT[upper];
   if (extra !== undefined) return extra;
 
-  const mapped = DARK_BY_LIGHT[upper];
-  if (mapped !== undefined) return mapped;
-
-  /* Baaki kisi bhi light value ko luminance se ink surface bana dete hain. */
-  return fallbackInk(value, property);
+  /* 6. Conservative fallback. */
+  return themeIsDark ? fallbackInk(value, property) : fallbackLight(value, property);
 }
 
-/** Luminance-based fallback — jo dark hex map me nahi hai uske liye (light mode me dark se bachane ko). */
+/**
+ * Light mode fallback — sirf SURFACE/BORDER roles me.
+ *
+ * ⚠️ Text (`color`) ke liye KABHI fallback nahi: halki text ko ink (black)
+ * banana hi woh bug tha jisse Light Mode me elements black ho jaate the.
+ * Text halki hai toh woh dark surface par hi rakhi hai (hero, chat bubble).
+ */
 function fallbackLight(value: string, property: string): string {
   const hex = value.slice(1);
   if (hex.length !== 6) return value;
@@ -464,27 +605,17 @@ function fallbackLight(value: string, property: string): string {
   const max = Math.max(...rgb);
   const min = Math.min(...rgb);
   const saturation = max === 0 ? 0 : (max - min) / max;
+
   if (property === 'backgroundColor' && lum < 0.22 && saturation < 0.35) {
     return lum < 0.12 ? LIGHT.card : LIGHT.cardMuted;
   }
-  if (
-    (property === 'borderColor' ||
-      property === 'borderTopColor' ||
-      property === 'borderBottomColor' ||
-      property === 'borderLeftColor' ||
-      property === 'borderRightColor') &&
-    lum < 0.3 &&
-    saturation < 0.4
-  ) {
+  if (BORDER_PROPERTIES.has(property) && lum < 0.3 && saturation < 0.4) {
     return LIGHT.border;
-  }
-  if (property === 'color' && lum > 0.8 && saturation < 0.2) {
-    return LIGHT.text;
   }
   return value;
 }
 
-/** Luminance-based fallback — jo hex map me nahi hai uske liye. */
+/** Dark mode fallback — sirf SURFACE/BORDER/TEXT roles me (text: dark ink -> bright ink). */
 function fallbackInk(value: string, property: string): string {
   const hex = value.slice(1);
   if (hex.length !== 6) return value;
@@ -493,10 +624,29 @@ function fallbackInk(value: string, property: string): string {
   const max = Math.max(...rgb);
   const min = Math.min(...rgb);
   const saturation = max === 0 ? 0 : (max - min) / max;
-  if (property === 'backgroundColor' && lum > 0.75 && saturation < 0.35) return lum > 0.94 ? DARK.card : DARK.cardMuted;
-  if ((property === 'borderColor' || property === 'borderTopColor' || property === 'borderBottomColor' || property === 'borderLeftColor' || property === 'borderRightColor') && lum > 0.55 && saturation < 0.35) return DARK.borderStrong;
-  if (property === 'color' && lum < 0.3 && saturation < 0.95) return DARK.text;
+  if (property === 'backgroundColor' && lum > 0.75 && saturation < 0.35) {
+    return lum > 0.94 ? DARK.card : DARK.cardMuted;
+  }
+  if (BORDER_PROPERTIES.has(property) && lum > 0.55 && saturation < 0.35) return DARK.borderStrong;
+  if ((property === 'color' || property === 'tintColor') && lum < 0.3 && saturation < 0.95) return DARK.text;
   return value;
+}
+
+/**
+ * Public helper — captured colour ko current mode ke colour me resolve karta
+ * hai. Tests isse round-trip verify karte hain.
+ */
+export function resolveThemedColor(value: string, property: string): string {
+  const resolved = themedStyleColor(value, property);
+  return typeof resolved === 'string' ? resolved : value;
+}
+
+/**
+ * Palette tokens ka public listing — tests isse completeness check karte hain
+ * (har token dono palettes me defined hona chahiye).
+ */
+export function themeTokenNames(): string[] {
+  return Object.keys(LIGHT);
 }
 
 // StyleSheet styles ek baar module load par banti hain. Un colour values ko

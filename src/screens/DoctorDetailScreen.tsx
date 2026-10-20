@@ -13,7 +13,7 @@ import ReviewGateModal, { ReviewGateKind } from '../components/ReviewGateModal';
 import ReviewSheet from '../components/ReviewSheet';
 import { DegreeVerifiedBadge, photoUrl, staffLabel, visitFee, VerificationBadge } from '../components/DoctorCard';
 import { AppButton, Badge, Card, ErrorState, Loader, Rating, Screen, SectionHeader } from '../components/UI';
-import api, { LabTest, Review, ReviewEligibility, Vendor, VendorStats } from '../api/api';
+import api, { DoctorPricing, LabTest, Review, ReviewEligibility, Vendor, VendorStats } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from '../navigation/types';
 
@@ -183,53 +183,149 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
     doctor.nurseDetails ||
     doctor.caretakerDetails ||
     undefined;
-  /** Vendor panel se set ki gayi asli pricing (sabse upar). */
-  const pricing = doctor.pricing ?? details?.pricing ?? lab?.pricing ?? {};
+  /**
+   * Vendor panel se set ki gayi asli pricing.
+   *
+   * Top-level `vendor.pricing` me sirf kuch common keys aati hain (aur
+   * unset keys 0 aa jaate hain) — asli daam nested `*Details.pricing` me hota
+   * hai (jaise compounder ka perHour). Dono merge karte hain, top-level ki
+   * priority.
+   */
+  const pricing: DoctorPricing = {
+    ...(details?.pricing ?? {}),
+    ...(lab?.pricing ?? {}),
+    ...(doctor.pricing ?? {}),
+  };
   const fee = visitFee(doctor);
 
-  /* Sirf vendor-set fees dikhate hain — koi fabricated number nahi. */
-  const feeRows: { label: string; value: number | undefined }[] = [
-    { label: 'Home Visit', value: pricing.homeVisitFee },
-    { label: 'Online Consultation', value: pricing.onlineConsultationFee },
-    { label: 'Clinic Visit', value: pricing.clinicVisitFee },
-    { label: 'Per Visit', value: pricing.perVisit },
-    { label: 'Per Hour', value: pricing.perHour },
-    { label: 'Half Day', value: pricing.halfDay },
-    { label: 'Full Day', value: pricing.fullDay },
-    { label: 'Injection', value: pricing.injectionFee },
-    { label: 'Dressing', value: pricing.dressingFee },
-    { label: 'BP / Sugar Check', value: pricing.bpSugarCheckFee },
-    { label: 'IV Drip', value: pricing.ivDripFee },
-    { label: 'Home Collection', value: pricing.homeCollectionFee },
-  ].filter((row): row is { label: string; value: number } => typeof row.value === 'number');
+  /* Service toggles — koi service band ho to uska daam bhi nahi dikhna chahiye. */
+  const services = doctor.services ?? details?.services ?? lab?.services ?? {};
 
-  const highlights: { icon: IconName; label: string }[] = [
-    {
-      icon: 'shield-check',
-      label:
-        details?.registrationNumber ||
-        lab?.licenseNumber ||
-        'Verified & background checked',
-    },
-    {
-      icon: 'award',
-      label: details?.experienceYears
-        ? `${details.experienceYears} years experience`
-        : 'Experienced professional',
-    },
-    { icon: 'message-circle', label: (details?.languages ?? ['Hindi', 'English']).join(' • ') },
-  ];
+  /**
+   * Fees — sirf vendor-set asli daam.
+   *
+   * 0 ka matlab "set nahi kiya" (backend 0 default bhejta hai) — isliye 0 wale
+   * rows chhupaye jaate hain, warna patient ko "₹0" dikhta hai aur usse lagta
+   * hai price galat hai. Lab ke liye sirf home-collection / walk-in valid hai —
+   * online consultation, video call ya chat lab ke kaam ka nahi hai.
+   */
+  type FeeRow = { label: string; value: number | undefined; serviceKey?: string };
+  const feeCandidates: FeeRow[] = lab
+    ? [
+        {
+          label: 'Home Collection',
+          value: pricing.homeCollectionFee ?? lab.homeCollectionFee,
+          serviceKey: 'homeVisit',
+        },
+        { label: 'Lab Visit', value: pricing.clinicVisitFee, serviceKey: 'clinicVisit' },
+      ]
+    : [
+        { label: 'Home Visit', value: pricing.homeVisitFee, serviceKey: 'homeVisit' },
+        {
+          label: 'Online Consultation',
+          value: pricing.onlineConsultationFee,
+          serviceKey: 'onlineConsultation',
+        },
+        { label: 'Clinic Visit', value: pricing.clinicVisitFee, serviceKey: 'clinicVisit' },
+        { label: 'Per Visit', value: pricing.perVisit },
+        { label: 'Per Hour', value: pricing.perHour },
+        { label: 'Half Day', value: pricing.halfDay },
+        { label: 'Full Day', value: pricing.fullDay },
+        { label: 'Injection', value: pricing.injectionFee },
+        { label: 'Dressing', value: pricing.dressingFee },
+        { label: 'BP / Sugar Check', value: pricing.bpSugarCheckFee },
+        { label: 'IV Drip', value: pricing.ivDripFee },
+        { label: 'Home Collection', value: pricing.homeCollectionFee },
+      ];
+  const feeRows = feeCandidates.filter(
+    (row): row is { label: string; value: number; serviceKey?: string } =>
+      typeof row.value === 'number' &&
+      row.value > 0 &&
+      (!row.serviceKey || services[row.serviceKey] !== false),
+  );
 
-  const serviceChips = Object.entries(details?.services ?? lab?.services ?? doctor.services ?? {})
+  /** Lab ka sabse sasta test — upar wale strip me "Tests from ₹X" dikhane ke liye. */
+  const minTestPrice = labTests.length
+    ? Math.min(...labTests.map(test => test.discountedPrice ?? test.price))
+    : undefined;
+  /** Home sample collection ka daam (0 = free). */
+  const homeCollectionFee = pricing.homeCollectionFee ?? lab?.homeCollectionFee ?? 0;
+  /** Backend `homeCollectionAvailable` bhi bhejta hai — dono keys dekho. */
+  const homeCollectionAvailable = Boolean(
+    lab?.homeSampleCollectionAvailable ?? lab?.homeCollectionAvailable,
+  );
+
+  /* Top strip — lab ke liye asli price (tests + collection), ₹0 nahi. */
+  const statItems = lab
+    ? [
+        { label: 'Tests from', value: minTestPrice != null ? `₹${minTestPrice}` : '—' },
+        {
+          label: 'Home Collection',
+          value: homeCollectionFee > 0 ? `₹${homeCollectionFee}` : 'Free',
+        },
+        {
+          label: 'Bookings',
+          value: String(stats?.totalBookings ?? doctor.totalBookingsCount ?? 0),
+        },
+      ]
+    : [
+        ...feeRows.slice(0, 2).map(row => ({ label: row.label, value: `₹${row.value}` })),
+        {
+          label: 'Bookings',
+          value: String(stats?.totalBookings ?? doctor.totalBookingsCount ?? 0),
+        },
+      ];
+
+  const highlights: { icon: IconName; label: string }[] = lab
+    ? [
+        {
+          icon: 'shield-check',
+          label: lab.licenseNumber || 'Verified & background checked',
+        },
+        {
+          icon: 'flask',
+          label: labTests.length
+            ? `${labTests.length} test${labTests.length === 1 ? '' : 's'} available`
+            : 'Diagnostic lab & home sample collection',
+        },
+        {
+          icon: 'home',
+          label: homeCollectionAvailable
+            ? 'Home sample collection available'
+            : 'Visit the lab for samples',
+        },
+      ]
+    : [
+        {
+          icon: 'shield-check',
+          label:
+            details?.registrationNumber ||
+            doctor.registrationNumber ||
+            'Verified & background checked',
+        },
+        {
+          icon: 'award',
+          label: details?.experienceYears
+            ? `${details.experienceYears} years experience`
+            : 'Experienced professional',
+        },
+        { icon: 'message-circle', label: (details?.languages ?? ['Hindi', 'English']).join(' • ') },
+      ];
+
+  const serviceChips = Object.entries(
+    lab ? (lab.services ?? doctor.services ?? {}) : (details?.services ?? doctor.services ?? {}),
+  )
     .filter(([, enabled]) => Boolean(enabled))
-    .map(([key]) => labelForService(key));
+    .map(([key]) => labelForService(key, Boolean(lab)));
 
   /*
    * Consult online card — sirf tab jab doctor ne panel se video/chat
    * consultation enable ki ho (services.videoConsultation / chatConsultation).
    * Fee/duration bhi wahi se (koi fabricated number nahi).
+   *
+   * Lab ke liye ye card kabhi nahi — lab VC/chat nahi kar sakta.
    */
-  const consultServices = details?.services ?? doctor.services ?? {};
+  const consultServices = lab ? {} : (details?.services ?? doctor.services ?? {});
   const consultationRows = ([
     {
       mode: 'video' as const,
@@ -307,13 +403,7 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
 
         {/* Stats strip — sirf vendor-set daam + asli bookings */}
         <View style={styles.statsStrip}>
-          {[
-            ...feeRows.slice(0, 2).map(row => ({ label: row.label, value: `₹${row.value}` })),
-            {
-              label: 'Bookings',
-              value: String(stats?.totalBookings ?? doctor.totalBookingsCount ?? 0),
-            },
-          ].map(s => (
+          {statItems.map(s => (
             <View key={s.label} style={styles.statItem}>
               <Text style={styles.statValue} numberOfLines={1}>{s.value}</Text>
               <Text style={[typography.caption, { textAlign: 'center' }]} numberOfLines={1}>{s.label}</Text>
@@ -395,8 +485,10 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
                   <Icon name="home" size={16} color={colors.primary} />
                 </View>
                 <Text style={[typography.small, { flex: 1 }]}>
-                  {lab.homeSampleCollectionAvailable
-                    ? `Home sample collection available${lab.homeCollectionFee ? ` (₹${lab.homeCollectionFee})` : ''}`
+                  {homeCollectionAvailable
+                    ? `Home sample collection available${
+                        homeCollectionFee > 0 ? ` (₹${homeCollectionFee})` : ' (free)'
+                      }`
                     : 'Visit the lab for samples'}
                 </Text>
               </View>
@@ -660,7 +752,18 @@ export default function DoctorDetailScreen({ navigation, route }: Props): React.
   );
 }
 
-function labelForService(key: string): string {
+function labelForService(key: string, isLab = false): string {
+  /* Lab ke liye service names alag — "Home Visit" ki jagah "Home Collection". */
+  if (isLab) {
+    const labMap: Record<string, string> = {
+      homeVisit: 'Home Sample Collection',
+      clinicVisit: 'Walk-in Sample Collection',
+      homeCollection: 'Home Sample Collection',
+      reportOnline: 'Online Reports',
+      emergencyAvailable: 'Emergency',
+    };
+    return labMap[key] ?? key;
+  }
   const map: Record<string, string> = {
     onlineConsultation: 'Online Consultation',
     videoConsultation: 'Video Consultation',

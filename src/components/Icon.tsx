@@ -85,7 +85,10 @@ export type IconName =
   | 'utensils'
   | 'leaf'
   | 'sun'
-  | 'moon';
+  | 'moon'
+  /* Prescription credits — payment / read pack ke liye */
+  | 'credit-card'
+  | 'package';
 
 interface IconProps {
   name: IconName;
@@ -541,6 +544,19 @@ const ICONS: Record<IconName, React.ReactNode> = {
   ),
   moon: (
     <Path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+  ),
+  'credit-card': (
+    <>
+      <Rect x={1} y={4} width={22} height={16} rx={2} />
+      <Line x1={1} y1={10} x2={23} y2={10} />
+    </>
+  ),
+  package: (
+    <>
+      <Path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <Polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+      <Line x1={12} y1={22.08} x2={12} y2={12} />
+    </>
   ),
 };
 

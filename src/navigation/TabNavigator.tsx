@@ -22,7 +22,7 @@ import PharmacyScreen from '../screens/PharmacyScreen';
 */
 import ProfileScreen from '../screens/ProfileScreen';
 import { colors, radius, shadow, spacing, typography } from '../theme/theme';
-import { useThemeKey, useThemePreference } from '../theme/ThemeContext';
+import { useThemePreference } from '../theme/ThemeContext';
 
 const Tab = createBottomTabNavigator();
 
@@ -49,6 +49,8 @@ const TAB_META: Record<string, TabMeta> = {
 
 /** Pill ka brand gradient (teal → azure) — unique id taaki SVG ids clash na karein. */
 function PillGradient(): React.JSX.Element {
+  /* Theme subscription — gradient stops current palette se aate hain. */
+  useThemePreference();
   const gradientId = `tab-pill-${useId().replace(/:/g, '')}`;
   return (
     <Svg width="100%" height="100%">
@@ -75,6 +77,8 @@ function TabItem({
   onPress: () => void;
   onLongPress: () => void;
 }): React.JSX.Element {
+  /* Theme subscription — icon/label colours current palette se aate hain. */
+  useThemePreference();
   /* 0 = inactive, 1 = active — iske saare animations nikalte hain. */
   const active = useRef(new Animated.Value(focused ? 1 : 0)).current;
   /* Billi ka hilne-wala animation. */
@@ -153,7 +157,6 @@ function TabItem({
 
 function TabBar({ state, navigation }: BottomTabBarProps): React.JSX.Element {
   const insets = useSafeAreaInsets();
-  const themeKey = useThemeKey();
   const [rowWidth, setRowWidth] = useState(0);
 
   const tabWidth = rowWidth > 0 ? rowWidth / state.routes.length : 0;
@@ -177,51 +180,52 @@ function TabBar({ state, navigation }: BottomTabBarProps): React.JSX.Element {
     extrapolate: 'clamp',
   });
 
-  /* Tab bar ke bahar koi aur themed view nahi hai, is liye yahan bhi wahi
-     themeKey remount lagta hai — warna tab bar ke colours (stable stylesheet
-     references) purane hi reh jaate the. */
+  /*
+   * Tab bar apne aap theme follow karta hai — colours har render par current
+   * palette se padhe jaate hain. Pehle yahan `key={themeKey}` remount tha,
+   * jisse har theme switch par poori spring/gradient animation restart ho
+   * jaati thi. Ab zaroorat nahi.
+   */
   return (
-    <React.Fragment key={themeKey}>
-      <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 6) }]}>
-        <View style={styles.bar}>
-          <View style={styles.row} onLayout={event => setRowWidth(event.nativeEvent.layout.width)}>
-            <Animated.View
-              pointerEvents="none"
-              style={[styles.pill, { width: pillWidth, transform: [{ translateX }] }]}
-            >
-              <PillGradient />
-            </Animated.View>
-            {state.routes.map((route, index) => {
-              const meta = TAB_META[route.name] ?? { label: route.name, icon: 'grid' as IconName };
-              const focused = state.index === index;
+    <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+      <View style={styles.bar}>
+        <View style={styles.row} onLayout={event => setRowWidth(event.nativeEvent.layout.width)}>
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.pill, { width: pillWidth, transform: [{ translateX }] }]}
+          >
+            <PillGradient />
+          </Animated.View>
+          {state.routes.map((route, index) => {
+            const meta = TAB_META[route.name] ?? { label: route.name, icon: 'grid' as IconName };
+            const focused = state.index === index;
 
-              const onPress = () => {
-                const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-                if (!focused && !event.defaultPrevented) {
-                  // Keep the nested screen state intact while switching tabs. Using
-                  // the route key here makes this work consistently from every tab.
-                  navigation.navigate({ name: route.name, params: route.params, merge: true } as never);
-                }
-              };
+            const onPress = () => {
+              const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+              if (!focused && !event.defaultPrevented) {
+                // Keep the nested screen state intact while switching tabs. Using
+                // the route key here makes this work consistently from every tab.
+                navigation.navigate({ name: route.name, params: route.params, merge: true } as never);
+              }
+            };
 
-              const onLongPress = () => {
-                navigation.emit({ type: 'tabLongPress', target: route.key });
-              };
+            const onLongPress = () => {
+              navigation.emit({ type: 'tabLongPress', target: route.key });
+            };
 
-              return (
-                <TabItem
-                  key={route.key}
-                  meta={meta}
-                  focused={focused}
-                  onPress={onPress}
-                  onLongPress={onLongPress}
-                />
-              );
-            })}
-          </View>
+            return (
+              <TabItem
+                key={route.key}
+                meta={meta}
+                focused={focused}
+                onPress={onPress}
+                onLongPress={onLongPress}
+              />
+            );
+          })}
         </View>
       </View>
-    </React.Fragment>
+    </View>
   );
 }
 

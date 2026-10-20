@@ -41,7 +41,7 @@ import { useVoiceChat } from '../utils/voice';
 
 import { colors, gradients, radius, shadow, spacing, typography } from '../theme/theme';
 
-import { useThemePreference } from '../theme/ThemeContext';
+import { useThemeKey, useThemePreference } from '../theme/ThemeContext';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -286,6 +286,7 @@ function VoiceWave(): React.JSX.Element {
 
 export default function AIScreen(): React.JSX.Element {
   useThemePreference();
+  const themeKey = useThemeKey();
   const insets = useSafeAreaInsets();
 
   const [messages, setMessages] = useState<Message[]>([GREETING]);
@@ -468,6 +469,7 @@ export default function AIScreen(): React.JSX.Element {
         {/* Messages — inverted list, chat jaisa neeche se grow hoti hai */}
         <FlatList
           data={[...messages].reverse()}
+          extraData={themeKey}
           keyExtractor={(item, index) => `${item.role}-${messages.length - index}`}
           inverted
           style={{ flex: 1 }}

@@ -26,6 +26,13 @@
     <uses-feature android:name="android.hardware.audio.output" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
+    <!-- Prescription PDF ko public "Downloads" folder me save karne ke liye.
+         Android 10+ (API 29) par MediaStore ke through bina permission ke
+         save hota hai — ye permission sirf Android 9 (API 28) tak ke liye hai. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
     <application
       android:name=".MainApplication"
       android:label="@string/app_name"

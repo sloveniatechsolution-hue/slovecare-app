@@ -109,6 +109,18 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
   const isLabMode = params.mode === 'lab';
   const isMedicineMode = params.mode === 'medicine';
 
+  /**
+   * Consultation types — lab ke liye online consultation allowed nahi hai
+   * (lab VC/chat nahi kar sakta), isliye wo option chhupaya jaata hai.
+   */
+  const consultationTypes = useMemo(
+    () =>
+      vendor?.type === 'lab'
+        ? CONSULTATION_TYPES.filter(type => type.key !== 'Online Consultation')
+        : CONSULTATION_TYPES,
+    [vendor?.type],
+  );
+
   /* ------------------------------- data load ------------------------------- */
   /**
    * Availability backend se: vendor ki working days/hours se bane dates +
@@ -535,7 +547,7 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
             <View style={{ marginTop: spacing.xl }}>
               <SectionHeader title="Consultation type" />
               <View style={{ gap: spacing.sm }}>
-                {CONSULTATION_TYPES.map(type => (
+                {consultationTypes.map(type => (
                   <Pressable
                     key={type.key}
                     onPress={() => setConsultationType(type.key)}
