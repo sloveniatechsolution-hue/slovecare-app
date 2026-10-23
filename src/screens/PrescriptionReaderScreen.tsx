@@ -36,6 +36,8 @@ import AppHeader from '../components/AppHeader';
 import Icon from '../components/Icon';
 import PrescriptionCreditsCard from '../components/PrescriptionCreditsCard';
 import PrescriptionPaywallModal from '../components/PrescriptionPaywallModal';
+import RazorpayCheckout from '../components/RazorpayCheckout';
+import { usePrescriptionPackPurchase } from '../hooks/usePrescriptionPackPurchase';
 import {
   AppButton,
   Badge,
@@ -185,6 +187,18 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
   const [showExtracted, setShowExtracted] = useState(false);
   const [expandedMedicine, setExpandedMedicine] = useState<number | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
+
+  const {
+    purchase: purchasePack,
+    checkoutProps,
+    busy: purchaseBusy,
+    error: purchaseError,
+    clearError: clearPurchaseError,
+  } = usePrescriptionPackPurchase({
+    onActivated: () => {
+      setShowPaywall(false);
+    },
+  });
 
   const busy = phase === 'ocr' || phase === 'ai' || phase === 'summary';
 
@@ -675,11 +689,22 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
 
       {/* --------------------- Paywall (credits khatam) ---------------------- */}
       <PrescriptionPaywallModal
-        visible={showPaywall}
+        visible={showPaywall && !checkoutProps.visible}
         onClose={() => setShowPaywall(false)}
         onRequireLogin={isLoggedIn ? undefined : () => navigation.navigate('Auth')}
-        onViewPlans={() => navigation.navigate('PrescriptionReaderPlans')}
+        onViewPlans={() => {
+          setShowPaywall(false);
+          navigation.navigate('PrescriptionReaderPlans');
+        }}
+        onPay={purchasePack}
+        busy={purchaseBusy}
+        error={purchaseError}
+        clearError={clearPurchaseError}
+        checkoutProps={checkoutProps}
       />
+
+      {/* ---------------------------- Razorpay sheet ------------------------ */}
+      <RazorpayCheckout {...checkoutProps} />
     </Screen>
   );
 }

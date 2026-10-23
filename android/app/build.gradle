@@ -119,8 +119,8 @@ android {
         applicationId "com.slovecare"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.0.1"
+        versionCode 3
+        versionName "1.0.2"
 
         // AGP 9.2/CMake 3.22 can omit the NDK C++ runtime from generated
         // React Native codegen link commands on Windows. Without this, release

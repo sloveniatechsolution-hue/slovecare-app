@@ -27,8 +27,11 @@ const SEEDED_STAFF_IDS = new Set([
   'ven-care-100007', // Sunita Devi
 ]);
 
-/** Seed script ka numeric id pattern (doctype + 6 digit number). */
-const SEEDED_ID_PATTERN = /^ven-(doc|comp|care)-\d{6}$/;
+/**
+ * Seed script ka numeric id pattern — sirf purane demo records (10000x aur 999999).
+ * Real doctors (jaise ven-doc-200001..200005, ven-doct-072382, etc.) filter nahi hote.
+ */
+const SEEDED_ID_PATTERN = /^ven-(doc|comp|care)-(10000\d|999999)$/;
 
 interface VendorLike {
   id?: string;

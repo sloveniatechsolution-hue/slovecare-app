@@ -74,7 +74,12 @@ export function usePrescriptionPackPurchase(options?: {
         await refresh();
         return;
       }
-      setError((e as Error).message || 'Could not start payment. Please try again.');
+      const status = (e as { statusCode?: number })?.statusCode;
+      if (status === 401) {
+        setError('Please sign in to purchase prescription reads.');
+      } else {
+        setError((e as Error).message || 'Could not start payment. Please try again.');
+      }
     } finally {
       setBusy(false);
     }
@@ -121,6 +126,7 @@ export function usePrescriptionPackPurchase(options?: {
       currency: 'INR',
       amountRupees: 0,
     },
+    description: '10 Prescription Reads pack',
     prefill: user
       ? { name: user.name, email: user.email, contact: user.phone }
       : undefined,

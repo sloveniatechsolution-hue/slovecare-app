@@ -11,6 +11,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from './Icon';
 import { AppButton } from './UI';
+import RazorpayCheckout, { RazorpayCheckoutProps } from './RazorpayCheckout';
 import { usePrescriptionCredits } from '../context/PrescriptionCreditsContext';
 import { usePrescriptionPackPurchase } from '../hooks/usePrescriptionPackPurchase';
 import {
@@ -29,25 +30,43 @@ const INCLUDED = [
   'Photo never stored — deleted after reading',
 ];
 
-export function PrescriptionPaywallModal({
-  visible,
-  onClose,
-  onRequireLogin,
-  onViewPlans,
-}: {
+export interface PrescriptionPaywallModalProps {
   visible: boolean;
   onClose: () => void;
   /** User login nahi hai → sign-in screen kholne ke liye. */
   onRequireLogin?: () => void;
   /** Detailed plans screen kholne ke liye (optional). */
   onViewPlans?: () => void;
-}): React.JSX.Element {
+  onPay?: () => void;
+  busy?: boolean;
+  error?: string | null;
+  clearError?: () => void;
+  checkoutProps?: RazorpayCheckoutProps & { visible: boolean };
+}
+
+export function PrescriptionPaywallModal({
+  visible,
+  onClose,
+  onRequireLogin,
+  onViewPlans,
+  onPay,
+  busy: externalBusy,
+  error: externalError,
+  clearError: externalClearError,
+  checkoutProps: externalCheckoutProps,
+}: PrescriptionPaywallModalProps): React.JSX.Element {
   useThemePreference();
   const insets = useSafeAreaInsets();
   const { credits, serverBacked } = usePrescriptionCredits();
-  const { purchase, busy, error, clearError } = usePrescriptionPackPurchase({
+  const internal = usePrescriptionPackPurchase({
     onActivated: onClose,
   });
+
+  const purchase = onPay ?? internal.purchase;
+  const busy = externalBusy !== undefined ? externalBusy : internal.busy;
+  const error = externalError !== undefined ? externalError : internal.error;
+  const clearError = externalClearError ?? internal.clearError;
+  const checkoutProps = externalCheckoutProps ?? internal.checkoutProps;
 
   /* Sheet band karte hi stale error clear. */
   useEffect(() => {
@@ -200,6 +219,7 @@ export function PrescriptionPaywallModal({
           </ScrollView>
         </View>
       </View>
+      {!externalCheckoutProps ? <RazorpayCheckout {...checkoutProps} /> : null}
     </Modal>
   );
 }

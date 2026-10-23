@@ -19,7 +19,7 @@ export interface DoctorCardProps {
 
 /** Vendor ke type ke hisaab se label (website ke staff categories se milta-julta). */
 export function staffLabel(doctor: Doctor): string {
-  const spec = doctor.doctorDetails?.specialization;
+  const spec = doctor.doctorDetails?.specialization || doctor.specialization;
   if (spec) {
     return spec;
   }
