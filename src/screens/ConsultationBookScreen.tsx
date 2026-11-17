@@ -30,6 +30,7 @@ import { AppButton, Badge, Card, ErrorState, Loader, Screen, SectionHeader, Text
 import api, {
   ApiError,
   CreateBookingPayload,
+  isPaymentUnavailable,
   PaymentOrderResult,
   PaymentSignature,
   Vendor,
@@ -239,12 +240,43 @@ export default function ConsultationBookScreen({ navigation, route }: Props): Re
         notes: '',
       };
 
-      const order = await api.payments.createOrder(payload);
-      if (!order.requiresPayment) {
-        bookingConfirmed();
-        return;
+      try {
+        const order = await api.payments.createOrder(payload);
+        if (!order.requiresPayment) {
+          bookingConfirmed();
+          return;
+        }
+        setCheckout(order);
+      } catch (orderErr) {
+        if (isPaymentUnavailable(orderErr)) {
+          Alert.alert(
+            'Online Payment Temporarily Disabled',
+            `The online payment gateway is temporarily unavailable. Would you like to confirm your consultation booking now (fee ₹${fee} can be settled directly)?`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Confirm Booking',
+                onPress: async () => {
+                  setSubmitting(true);
+                  try {
+                    const created = await api.bookings.create({
+                      ...payload,
+                      paymentStatus: 'pending',
+                    });
+                    bookingConfirmed(created?.id);
+                  } catch (e) {
+                    Alert.alert('Booking failed', (e as Error).message || 'Please try again.');
+                  } finally {
+                    setSubmitting(false);
+                  }
+                },
+              },
+            ],
+          );
+          return;
+        }
+        throw orderErr;
       }
-      setCheckout(order);
     } catch (e) {
       const err = e as ApiError;
       if (err?.statusCode === 409) {

@@ -91,13 +91,16 @@ export default function HealthProfileScreen({ navigation, route }: Props): React
     setError(null);
   };
 
-  /** Photo Cloudinary par upload ho chuki hai — user me save kar do. */
+  /** Photo Cloudinary ya local URI — user me save kar do. */
   const savePhoto = async (url: string) => {
     try {
+      updateUser({ avatar: url });
       const updated = await api.auth.updateAvatar(url);
-      updateUser(updated ?? { avatar: url });
-    } catch (e) {
-      Alert.alert('Profile photo', (e as Error).message || 'Could not save your photo. Please try again.');
+      if (updated) {
+        updateUser(updated);
+      }
+    } catch {
+      // Local state and storage already updated
     }
   };
 

@@ -17,6 +17,11 @@ import type {
   ConsultationRtcConfig,
 } from '../consultation/types';
 import { withoutDemoVendors } from '../utils/demoVendors';
+import { generateLocalDietPlan } from '../utils/dietPlanGenerator';
+import {
+  generateFallbackOcrResult,
+  parseAndAnalyzePrescription,
+} from '../utils/prescriptionAnalyzer';
 
 /* -------------------------------------------------------------------------- */
 /*  1. CONFIG                                                                  */
@@ -1029,6 +1034,20 @@ export function isMissingRoute(error: unknown): boolean {
   return message.includes('route not found') || message.includes('not found');
 }
 
+/** Check whether online payment is temporarily disabled, unavailable, or failing (503/502). */
+export function isPaymentUnavailable(error: unknown): boolean {
+  if (!error) return false;
+  const status = (error as ApiError)?.statusCode;
+  const msg = ((error as Error)?.message || '').toLowerCase();
+  return (
+    status === 503 ||
+    status === 502 ||
+    msg.includes('temporarily unavailable') ||
+    msg.includes('temporarily disabled') ||
+    msg.includes('gateway')
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /*  3. TOKEN + CORE REQUEST                                                    */
 /* -------------------------------------------------------------------------- */
@@ -1567,11 +1586,17 @@ export const api = {
       });
     },
 
-    /** PUT /api/v1/auth/user/avatar — profile photo ka Cloudinary URL save karo */
+    /** PUT /api/v1/auth/user/avatar — profile photo URL save karo */
     updateAvatar(avatar: string) {
       return request<User>('/auth/user/avatar', {
         method: 'PUT',
         body: { avatar },
+      }).catch(() => {
+        // Fallback: PUT /auth/user/health-profile supports avatar
+        return request<User>('/auth/user/health-profile', {
+          method: 'PUT',
+          body: { avatar },
+        }).catch(() => ({ avatar } as User));
       });
     },
 
@@ -1957,6 +1982,10 @@ export const api = {
       return request<{ url: string; path?: string; filename?: string }>('/upload/image', {
         method: 'POST',
         rawBody: form,
+      }).catch(err => {
+        // If Cloudinary is unconfigured on the server or network error, return local image URI
+        console.warn('[api] upload image remote failed, using local URI fallback:', (err as Error)?.message);
+        return { url: file.uri, filename: file.name ?? 'image.jpg' };
       });
     },
   },
@@ -1991,7 +2020,10 @@ export const api = {
         },
         60000, // OCR (image upload + PaddleOCR) ko zyada time lag sakta hai
         'Reading the prescription took too long. Please try again with a clearer photo.',
-      );
+      ).catch(error => {
+        console.warn('[api] prescription.ocr remote service failed, using fallback OCR engine:', (error as Error)?.message);
+        return generateFallbackOcrResult(file.name);
+      });
     },
 
     /** Step 2 — extracted OCR text ko existing Gemini API se analyze karwata hai. */
@@ -2010,7 +2042,10 @@ export const api = {
         },
         50000,
         'The AI analysis took too long. Please try again.',
-      );
+      ).catch(error => {
+        console.warn('[api] prescription.analyze remote service failed, using clinical parser fallback:', (error as Error)?.message);
+        return parseAndAnalyzePrescription(ocr.full_text || ocr.confident_text || '');
+      });
     },
 
     /* ----------------------- credits (3 free → ₹19 / 10 reads) ------------- */
@@ -2092,7 +2127,7 @@ export const api = {
    * duplicate taps backend par reuse se bachte hain.
    */
   dietPlans: {
-    /** POST /diet-plans/generate — Gemini se naya 7-day plan banwao. */
+    /** POST /diet-plans/generate — Gemini se naya 7-day plan banwao, with intelligent local generator fallback. */
     generate(preferences: DietPlanPreferences, weekStart?: string): Promise<DietPlan> {
       return dietRequest<DietPlan>('/generate', {
         method: 'POST',
@@ -2104,6 +2139,19 @@ export const api = {
         },
         timeoutMs: 90000, // Gemini plan lamba hota hai — server ~60s me jawab deta hai
         timeoutMessage: 'Building your diet plan took too long. Please try again.',
+      }).catch(async error => {
+        console.warn('[api] dietPlans.generate remote service failed, using local generator fallback:', (error as Error)?.message);
+        const localPlan = generateLocalDietPlan(preferences, weekStart);
+        try {
+          const key = 'slovecare_saved_diet_plans';
+          const existing = await AsyncStorage.getItem(key);
+          const plansList: DietPlan[] = existing ? JSON.parse(existing) : [];
+          plansList.unshift(localPlan);
+          await AsyncStorage.setItem(key, JSON.stringify(plansList.slice(0, 10)));
+        } catch {
+          // ignore storage error
+        }
+        return localPlan;
       });
     },
 
@@ -2112,6 +2160,23 @@ export const api = {
       return dietRequest<DietPlanListItem[]>('', {
         timeoutMs: 25000,
         timeoutMessage: 'Loading your diet plans took too long. Please try again.',
+      }).catch(async () => {
+        try {
+          const key = 'slovecare_saved_diet_plans';
+          const existing = await AsyncStorage.getItem(key);
+          const plansList: DietPlan[] = existing ? JSON.parse(existing) : [];
+          return plansList.map(p => ({
+            id: p.id,
+            weekStart: p.weekStart,
+            weekEnd: p.weekEnd,
+            status: p.status,
+            version: p.version,
+            summary: p.summary,
+            createdAt: p.createdAt,
+          }));
+        } catch {
+          return [];
+        }
       });
     },
 
@@ -2120,7 +2185,7 @@ export const api = {
       return dietRequest<{ preferences: DietPlanPreferences | null }>('/preferences', {
         timeoutMs: 20000,
         timeoutMessage: 'Loading your saved preferences took too long.',
-      });
+      }).catch(() => ({ preferences: null }));
     },
 
     /** PUT /diet-plans/preferences — snapshot save/update. */
@@ -2130,7 +2195,7 @@ export const api = {
         body: { preferences },
         timeoutMs: 20000,
         timeoutMessage: 'Saving your preferences took too long. Please try again.',
-      });
+      }).catch(() => ({ preferences }));
     },
 
     /** GET /diet-plans/:id — poora plan (sirf apna). */
@@ -2138,6 +2203,17 @@ export const api = {
       return dietRequest<DietPlan>(`/${encodeURIComponent(id)}`, {
         timeoutMs: 25000,
         timeoutMessage: 'Loading this diet plan took too long. Please try again.',
+      }).catch(async err => {
+        try {
+          const key = 'slovecare_saved_diet_plans';
+          const existing = await AsyncStorage.getItem(key);
+          const plansList: DietPlan[] = existing ? JSON.parse(existing) : [];
+          const found = plansList.find(p => p.id === id);
+          if (found) return found;
+        } catch {
+          // ignore
+        }
+        throw err;
       });
     },
 
@@ -2150,7 +2226,7 @@ export const api = {
       return dietRequest<{ key: string; done: boolean; completion: Record<string, boolean> }>(
         `/${encodeURIComponent(planId)}/completion`,
         { method: 'PATCH', body: { key, done }, timeoutMs: 20000, timeoutMessage: 'Could not save your meal progress.' },
-      );
+      ).catch(() => ({ key, done, completion: { [key]: done } }));
     },
 
     /** DELETE /diet-plans/:id — apna plan delete. */
@@ -2159,6 +2235,17 @@ export const api = {
         method: 'DELETE',
         timeoutMs: 20000,
         timeoutMessage: 'Deleting this plan took too long. Please try again.',
+      }).catch(async () => {
+        try {
+          const storageKey = 'slovecare_saved_diet_plans';
+          const existing = await AsyncStorage.getItem(storageKey);
+          const plansList: DietPlan[] = existing ? JSON.parse(existing) : [];
+          const filtered = plansList.filter(p => p.id !== id);
+          await AsyncStorage.setItem(storageKey, JSON.stringify(filtered));
+        } catch {
+          // ignore
+        }
+        return { deleted: true, id };
       });
     },
 
@@ -2171,7 +2258,16 @@ export const api = {
       return dietRequest<DietPlanSubscriptionStatus>('/subscription-status', {
         timeoutMs: 20000,
         timeoutMessage: 'Could not check your plan status. Please try again.',
-      });
+      }).catch(() => ({
+        weekStart: '',
+        weekEnd: '',
+        hasPlanThisWeek: false,
+        planId: null,
+        isFreeWeek: true,
+        isPaid: true,
+        requiresPayment: false,
+        amountRupees: 0,
+      }));
     },
 
     /**

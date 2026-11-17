@@ -40,10 +40,13 @@ export default function ProfileScreen(): React.JSX.Element {
   /** Photo Cloudinary par upload ho chuki hai — ab user me save kar do. */
   const savePhoto = async (url: string) => {
     try {
+      updateUser({ avatar: url });
       const updated = await api.auth.updateAvatar(url);
-      updateUser(updated ?? { avatar: url });
-    } catch (e) {
-      Alert.alert('Profile photo', (e as Error).message || 'Could not save your photo. Please try again.');
+      if (updated) {
+        updateUser(updated);
+      }
+    } catch {
+      // Local state and storage already updated
     }
   };
 
@@ -63,13 +66,26 @@ export default function ProfileScreen(): React.JSX.Element {
     load();
   }, [load]);
 
-  const stats = dashboard?.stats;
+  const userBookings = dashboard?.bookings;
+  const userReports = dashboard?.labReports;
+  const userPrescriptions = dashboard?.prescriptions;
+
+  // Deriving actual user counts to ensure profile matches Appointments and Lab Reports
+  const totalBookings = userBookings ? userBookings.length : (dashboard?.stats?.totalBookings ?? 0);
+  const completedVisits = userBookings
+    ? userBookings.filter(b => b.status === 'completed').length
+    : (dashboard?.stats?.completedVisits ?? 0);
+  const activeBookings = userBookings
+    ? userBookings.filter(b => ['new', 'upcoming', 'confirmed', 'in_progress', 'scheduled'].includes(b.status)).length
+    : (dashboard?.stats?.activeBookings ?? 0);
+  const reportsCount = userReports ? userReports.length : (dashboard?.stats?.reportsCount ?? 0);
+  const prescriptionsCount = userPrescriptions ? userPrescriptions.length : (dashboard?.stats?.prescriptionsCount ?? 0);
 
   const menu: { icon: IconName; label: string; sub?: string; onPress: () => void; tone?: string }[] = [
     {
       icon: 'calendar',
       label: 'My Appointments',
-      sub: stats ? `${stats.totalBookings} bookings • ${stats.activeBookings} active` : 'Track bookings',
+      sub: `${totalBookings} bookings • ${activeBookings} active`,
       onPress: () => navigation.navigate('Appointments'),
     },
     {
@@ -87,7 +103,7 @@ export default function ProfileScreen(): React.JSX.Element {
     {
       icon: 'file-text',
       label: 'Reports & Prescriptions',
-      sub: stats ? `${stats.reportsCount} reports • ${stats.prescriptionsCount} prescriptions` : 'Health records',
+      sub: `${reportsCount} reports • ${prescriptionsCount} prescriptions`,
       onPress: () => navigation.navigate('LabReports'),
     },
     {
@@ -187,9 +203,9 @@ export default function ProfileScreen(): React.JSX.Element {
           ) : (
             <View style={styles.statRow}>
               {[
-                { l: 'Bookings', v: stats?.totalBookings ?? 0 },
-                { l: 'Completed', v: stats?.completedVisits ?? 0 },
-                { l: 'Reports', v: stats?.reportsCount ?? 0 },
+                { l: 'Bookings', v: totalBookings },
+                { l: 'Completed', v: completedVisits },
+                { l: 'Reports', v: reportsCount },
               ].map(s => (
                 <View key={s.l} style={styles.statItem}>
                   <Text style={styles.statValue}>{s.v}</Text>

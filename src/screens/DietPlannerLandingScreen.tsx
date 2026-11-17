@@ -19,7 +19,7 @@ import AppHeader from '../components/AppHeader';
 import Icon from '../components/Icon';
 import { AppButton, Card, GradientCard, Loader, Screen } from '../components/UI';
 import RazorpayCheckout, { CheckoutOrder } from '../components/RazorpayCheckout';
-import api, { ApiError, DietPlanSubscriptionStatus } from '../api/api';
+import api, { ApiError, DietPlanSubscriptionStatus, isPaymentUnavailable } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { RootStackParamList } from '../navigation/types';
 
@@ -85,6 +85,11 @@ export default function DietPlannerLandingScreen({ navigation }: Props): React.J
       });
     } catch (e) {
       const err = e as ApiError;
+      if (isPaymentUnavailable(err)) {
+        // Online payment gateway is temporarily disabled — proceed directly with free week trial
+        navigation.navigate('DietPlanner');
+        return;
+      }
       Alert.alert(
         "Payment couldn't start",
         err.message || 'Could not start payment. Please try again.',

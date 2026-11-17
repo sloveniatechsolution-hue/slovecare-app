@@ -119,7 +119,7 @@ android {
         applicationId "com.slovecare"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
+        versionCode 4
         versionName "1.0.2"
 
         // AGP 9.2/CMake 3.22 can omit the NDK C++ runtime from generated

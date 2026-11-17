@@ -32,6 +32,7 @@ import { AppButton, Badge, Card, ErrorState, Loader, Screen, SectionHeader, Text
 import api, {
   ApiError,
   CreateBookingPayload,
+  isPaymentUnavailable,
   PaymentOrderResult,
   PaymentSignature,
   Vendor,
@@ -89,6 +90,7 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
   const [selectedDay, setSelectedDay] = useState('');
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'pay_on_visit' | 'online'>('pay_on_visit');
 
   /* Razorpay checkout + verify */
   const [checkout, setCheckout] = useState<Extract<PaymentOrderResult, { requiresPayment: true }> | null>(null);
@@ -322,16 +324,60 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
       };
 
       /*
-       * Payment flow: create-order par server booking validate + apni price
+       * If Pay at Clinic / on Visit is selected, confirm booking directly
+       * without requiring payment gateway (allows bookings when online payment is disabled).
+       */
+      if (paymentMethod === 'pay_on_visit' || amount === 0) {
+        const created = await api.bookings.create({
+          ...payload,
+          paymentStatus: 'pending',
+        });
+        bookingConfirmed(created?.id);
+        return;
+      }
+
+      /*
+       * Online payment flow: create-order par server booking validate + apni price
        * se match karta hai, slot reserve karta hai aur Razorpay order deta hai.
        * requiresPayment=false = free booking (seedha confirmed).
        */
-      const order = await api.payments.createOrder(payload);
-      if (!order.requiresPayment) {
-        bookingConfirmed();
-        return;
+      try {
+        const order = await api.payments.createOrder(payload);
+        if (!order.requiresPayment) {
+          bookingConfirmed();
+          return;
+        }
+        setCheckout(order);
+      } catch (orderErr) {
+        if (isPaymentUnavailable(orderErr)) {
+          Alert.alert(
+            'Online Payment Temporarily Disabled',
+            'Online payment gateway is temporarily unavailable. Would you like to confirm your appointment with "Pay at Clinic / on Visit" instead?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Confirm Booking',
+                onPress: async () => {
+                  setSubmitting(true);
+                  try {
+                    const created = await api.bookings.create({
+                      ...payload,
+                      paymentStatus: 'pending',
+                    });
+                    bookingConfirmed(created?.id);
+                  } catch (e) {
+                    Alert.alert('Booking failed', (e as Error).message || 'Please try again.');
+                  } finally {
+                    setSubmitting(false);
+                  }
+                },
+              },
+            ],
+          );
+          return;
+        }
+        throw orderErr;
       }
-      setCheckout(order);
     } catch (e) {
       const err = e as ApiError;
       if (err?.statusCode === 409) {
@@ -696,6 +742,58 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
             </Card>
           </View>
 
+          {/* Payment Method Selector */}
+          <View style={{ marginTop: spacing.xl }}>
+            <SectionHeader title="Payment method" subtitle="Choose how you would like to pay" />
+            <View style={{ gap: spacing.sm }}>
+              <Pressable
+                onPress={() => setPaymentMethod('pay_on_visit')}
+                style={[styles.optionRow, paymentMethod === 'pay_on_visit' && styles.optionActive]}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: paymentMethod === 'pay_on_visit' }}
+              >
+                <View style={styles.optionIcon}>
+                  <Icon
+                    name="check-circle"
+                    size={18}
+                    color={paymentMethod === 'pay_on_visit' ? colors.blue : colors.textMuted}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={typography.smallMedium}>
+                      {consultationType === 'Clinic Visit' ? 'Pay at Clinic' : 'Pay on Visit (Cash / UPI)'}
+                    </Text>
+                    <Badge label="Recommended" tone="success" />
+                  </View>
+                  <Text style={typography.caption}>Pay in cash or UPI at the time of your appointment</Text>
+                </View>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setPaymentMethod('online')}
+                style={[styles.optionRow, paymentMethod === 'online' && styles.optionActive]}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: paymentMethod === 'online' }}
+              >
+                <View style={styles.optionIcon}>
+                  <Icon
+                    name="credit-card"
+                    size={18}
+                    color={paymentMethod === 'online' ? colors.blue : colors.textMuted}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={typography.smallMedium}>Online Payment</Text>
+                    <Badge label="Temporarily Disabled" tone="warning" />
+                  </View>
+                  <Text style={typography.caption}>Razorpay gateway undergoing maintenance</Text>
+                </View>
+              </Pressable>
+            </View>
+          </View>
+
           {/* Price summary */}
           <Card style={{ marginTop: spacing.lg }}>
             <View style={styles.priceRow}>
@@ -726,13 +824,15 @@ export default function BookingScreen({ navigation, route }: Props): React.JSX.E
           <View style={{ flex: 2 }}>
             <AppButton
               label={
-                amount > 0
-                  ? `Pay ₹${amount} & Confirm`
-                  : isLabMode
-                    ? 'Confirm Lab Test'
-                    : isMedicineMode
-                      ? 'Place Order'
-                      : 'Confirm Booking'
+                paymentMethod === 'pay_on_visit'
+                  ? `Confirm Booking (₹${amount})`
+                  : amount > 0
+                    ? `Pay ₹${amount} & Confirm`
+                    : isLabMode
+                      ? 'Confirm Lab Test'
+                      : isMedicineMode
+                        ? 'Place Order'
+                        : 'Confirm Booking'
               }
               icon="check"
               size="lg"

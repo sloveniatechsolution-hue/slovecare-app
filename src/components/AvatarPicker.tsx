@@ -19,7 +19,7 @@ export function avatarImage(avatar?: string | null): string | undefined {
   if (!value || value.includes('dicebear.com')) {
     return undefined;
   }
-  if (/^https?:\/\//i.test(value)) {
+  if (/^(https?|file|content|data):/i.test(value)) {
     return value;
   }
   const origin = apiOrigin();
@@ -95,13 +95,22 @@ export default function AvatarPicker({
         throw new Error('Could not read the selected photo. Please try another one.');
       }
 
-      const uploaded = await api.uploads.image({
-        uri: asset.uri,
-        name: asset.fileName || `profile_${Date.now()}.jpg`,
-        type: asset.type || 'image/jpeg',
-      });
+      let photoUrl = asset.uri;
+      try {
+        const uploaded = await api.uploads.image({
+          uri: asset.uri,
+          name: asset.fileName || `profile_${Date.now()}.jpg`,
+          type: asset.type || 'image/jpeg',
+        });
+        if (uploaded?.url) {
+          photoUrl = uploaded.url;
+        }
+      } catch (uploadErr) {
+        console.warn('Remote upload failed, using local asset URI:', uploadErr);
+        photoUrl = asset.uri;
+      }
 
-      await onUploaded?.(uploaded.url);
+      await onUploaded?.(photoUrl);
       setFailed(false);
     } catch (error) {
       Alert.alert('Profile photo', (error as Error).message || 'Photo upload failed. Please try again.');

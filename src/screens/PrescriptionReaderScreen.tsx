@@ -45,7 +45,9 @@ import {
   InfoRow,
   Screen,
   SectionHeader,
+  TextField,
 } from '../components/UI';
+import { generateFallbackOcrResult } from '../utils/prescriptionAnalyzer';
 import api, {
   MedicineConfidence,
   PrescriptionAnalysisResult,
@@ -187,6 +189,8 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
   const [showExtracted, setShowExtracted] = useState(false);
   const [expandedMedicine, setExpandedMedicine] = useState<number | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [customText, setCustomText] = useState('');
+  const [showManualInput, setShowManualInput] = useState(false);
 
   const {
     purchase: purchasePack,
@@ -241,6 +245,7 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
         setPhase('idle');
         setExpandedMedicine(null);
         setShowExtracted(false);
+        setCustomText('');
       } catch (e) {
         setError((e as Error).message || 'Could not select an image. Please try again.');
       }
@@ -251,7 +256,10 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
   /* ------------------------------- analyze ------------------------------ */
 
   const analyze = useCallback(async () => {
-    if (!image || busy) {
+    const hasImage = Boolean(image);
+    const hasCustomText = Boolean(customText.trim());
+
+    if ((!hasImage && !hasCustomText) || busy) {
       return;
     }
     // Credits khatam ho gaye → paywall (₹19 → 10 reads).
@@ -266,12 +274,19 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
     setShowExtracted(false);
 
     try {
-      // Stage 1 — PaddleOCR
+      // Stage 1 — PaddleOCR / Fallback
       setPhase('ocr');
-      const ocr = await api.prescription.ocr(image);
+      const targetImage = image ?? {
+        uri: '',
+        name: `prescription_${Date.now()}.jpg`,
+        type: 'image/jpeg',
+      };
+      const ocr = hasCustomText
+        ? generateFallbackOcrResult(targetImage.name, customText.trim())
+        : await api.prescription.ocr(targetImage);
       setOcrResult(ocr);
 
-      // Stage 2 — existing Gemini API
+      // Stage 2 — existing Gemini API / Clinical Medical Parser
       setPhase('ai');
       const analysisResult = await api.prescription.analyze(ocr);
 
@@ -292,7 +307,7 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
       setError((e as Error).message || 'Something went wrong while reading the prescription. Please try again.');
       setPhase('error');
     }
-  }, [image, busy, canAnalyze, consumeRead, applyServerQuota]);
+  }, [image, customText, busy, canAnalyze, consumeRead, applyServerQuota]);
 
   const resetAll = () => {
     if (busy) {
@@ -381,13 +396,35 @@ export default function PrescriptionReaderScreen({ navigation }: Props): React.J
             />
           </View>
 
+          <Pressable
+            onPress={() => setShowManualInput(v => !v)}
+            style={{ marginTop: spacing.sm, alignSelf: 'center', padding: spacing.xs }}
+          >
+            <Text style={[typography.caption, { color: colors.blue }]}>
+              {showManualInput ? '▲ Hide prescription text editor' : '✎ Edit or enter prescription text manually'}
+            </Text>
+          </Pressable>
+
+          {showManualInput ? (
+            <View style={{ marginTop: spacing.sm }}>
+              <TextField
+                label="Prescription Text (Handwritten or Printed)"
+                placeholder="Type or paste medicine names (e.g. Tab Paracetamol 650mg TDS, Cap Pantocid 40mg)..."
+                value={customText}
+                onChangeText={setCustomText}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+          ) : null}
+
           <AppButton
             label={canAnalyze ? 'Analyze Prescription' : 'Get Reads to Continue'}
             icon={canAnalyze ? 'sparkles' : 'credit-card'}
             variant="accent"
             size="lg"
             /* Credits khatam → button hamesha active (paywall kholta hai). */
-            disabled={!image && canAnalyze}
+            disabled={!image && !customText.trim() && canAnalyze}
             loading={busy}
             onPress={analyze}
             style={{ marginTop: spacing.md }}

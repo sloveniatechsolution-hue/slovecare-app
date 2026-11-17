@@ -93,7 +93,7 @@ export default function LabReportsScreen({ navigation }: Props): React.JSX.Eleme
                 {[
                   { l: 'Reports', v: reports.length },
                   { l: 'Prescriptions', v: prescriptions.length },
-                  { l: 'Bookings', v: data?.stats.totalBookings ?? 0 },
+                  { l: 'Bookings', v: data?.bookings ? data.bookings.length : (data?.stats?.totalBookings ?? 0) },
                 ].map(s => (
                   <Card key={s.l} style={styles.statCard}>
                     <Text style={styles.statValue}>{s.v}</Text>
