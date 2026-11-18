@@ -15,6 +15,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   KeyboardAvoidingView,
   Platform,
@@ -169,13 +170,34 @@ export default function AuthScreen({ navigation }: Props): React.JSX.Element {
         const user = await login(identifier.trim(), password);
         navigateAfterAuth(user);
       } else {
-        const user = await register({
+        const registeredIdentifier = phone.trim() || email.trim();
+        await register({
           name: name.trim(),
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
           password: regPassword,
         });
-        navigateAfterAuth(user);
+
+        // Pre-fill the identifier in the login form
+        if (registeredIdentifier) {
+          setIdentifier(registeredIdentifier);
+        }
+        setPassword('');
+        // Clear registration fields
+        setName('');
+        setEmail('');
+        setPhone('');
+        setRegPassword('');
+        // Switch to login tab
+        setMode('login');
+        setLoginView('password');
+        setOtpSent(false);
+        setOtp('');
+
+        Alert.alert(
+          'Account Created',
+          'Your account has been created successfully. Please sign in with your credentials to continue.',
+        );
       }
     } catch (error) {
       setFormError((error as Error).message || 'Unable to continue. Please try again.');

@@ -27,7 +27,7 @@ interface AuthContextValue {
     email?: string;
     phone?: string;
     password?: string;
-  }) => Promise<User>;
+  }) => Promise<void>;
   logout: () => Promise<void>;
   /** Local user object update (health profile save hone ke baad) */
   updateUser: (patch: Partial<User>) => void;
@@ -121,10 +121,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
   const register = useCallback(
     async (input: { name: string; email?: string; phone?: string; password?: string }) => {
-      const result = await api.auth.register(input);
-      return completeSession(result);
+      // Only create the account on the server — do NOT save the token or auto-login.
+      // The user will be redirected to the login page to sign in manually.
+      await api.auth.register(input);
     },
-    [completeSession],
+    [],
   );
 
   const logout = useCallback(async () => {

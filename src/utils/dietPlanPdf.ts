@@ -18,9 +18,10 @@
  * Nutrition values estimates hain — disclaimer PDF me bhi hai.
  */
 
-import { Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import type { DietMeal, DietPlan } from '../api/api';
 import type { PDFResult, PDFOptions } from 'react-native-html-to-pdf';
+import FileSaver from '../native/FileSaver';
 
 /* -------------------------------------------------------------------------- */
 /*  Small helpers                                                              */
@@ -415,9 +416,10 @@ export async function exportDietPlanPdf(
   }
 
   const range = `${shortDate(plan.weekStart)} - ${shortDate(plan.weekEnd)}`;
+  const fileName = `SloveCare-Diet-Plan-${plan.weekStart}`;
   const result = await generatePDF({
     html,
-    fileName: `SloveCare-Diet-Plan-${plan.weekStart}`,
+    fileName,
     base64: false,
   });
   if (!result?.filePath) {
@@ -432,20 +434,48 @@ export async function exportDietPlanPdf(
   } catch {
     Share = undefined;
   }
-  if (!Share?.open) {
-    throw new Error(REBUILD_HINT);
-  }
 
   const filePath = result.filePath.startsWith('file://') ? result.filePath : `file://${result.filePath}`;
 
-  await Share.open({
-    url: filePath,
-    type: 'application/pdf',
-    title: 'SloveCare Weekly Diet Plan',
-    subject: `SloveCare Diet Plan (${range})`,
-    ...(Platform.OS === 'android'
-      ? { message: `My 7-day diet plan from SloveCare (${range})` }
-      : {}),
-    failOnCancel: false,
-  });
+  const openShareSheet = async () => {
+    if (!Share?.open) {
+      throw new Error(REBUILD_HINT);
+    }
+    await Share.open({
+      url: filePath,
+      type: 'application/pdf',
+      title: 'SloveCare Weekly Diet Plan',
+      subject: `SloveCare Diet Plan (${range})`,
+      ...(Platform.OS === 'android'
+        ? { message: `My 7-day diet plan from SloveCare (${range})` }
+        : {}),
+      failOnCancel: false,
+    });
+  };
+
+  // Android: save directly into public Downloads/SloveCare folder via FileSaver
+  if (FileSaver.isAvailable) {
+    try {
+      const location = await FileSaver.saveToDownloads(filePath, `${fileName}.pdf`);
+      Alert.alert(
+        'Diet plan saved',
+        `Saved as ${location}.\n\nYou can open it from your phone’s Downloads folder or share it with anyone.`,
+        [
+          { text: 'Done', style: 'cancel' },
+          {
+            text: 'Share',
+            onPress: () => {
+              openShareSheet().catch(() => {});
+            },
+          },
+        ],
+      );
+      return;
+    } catch {
+      // Fallback to share sheet if saving to Downloads fails
+    }
+  }
+
+  // Fallback: System share sheet (iOS or if FileSaver is unavailable)
+  await openShareSheet();
 }
